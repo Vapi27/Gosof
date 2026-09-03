@@ -79,7 +79,11 @@ begin
 	--     inc = 4533577 + (d - 160) * 26247
 	-- Ecart mesure contre la formule de MAME : moins de 0,5 Hz sur toute la
 	-- plage, de 422 kHz a 1,4725 MHz.
-	d_borne <= 64 when unsigned(clk_dac) < 64 else to_integer(unsigned(clk_dac));
+	-- Garde ecrite dans ce sens A DESSEIN : avec une metavaleur, une comparaison
+	-- IEEE rend FALSE. Ecrite « 64 when < 64 else to_integer(...) », la garde
+	-- laisserait donc passer 'U' vers le else et sortirait de la plage. Ici le
+	-- cas sur est le defaut. Logique synthetisee identique.
+	d_borne <= to_integer(unsigned(clk_dac)) when unsigned(clk_dac) >= 64 else 64;
 
 	inc <= to_unsigned(4533577 + (d_borne - 160) * 26247, 32) when PILOTE_PAR_LE_JEU
 	  else to_unsigned(DDS_INC_FIXE, 32);
