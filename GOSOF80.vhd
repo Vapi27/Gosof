@@ -127,6 +127,10 @@ architecture rtl of gosof80 is
 	signal DAC_latch_speech	:  std_logic;
 	signal sc01_strobe	:  std_logic;
 	signal sc01_AR			:  std_logic;
+	-- ajouts du portage : la voie parole, son melange, et la porte de carte
+	signal sc01_audio	:  signed(17 downto 0);
+	signal audio_mixe	:  std_logic_vector(15 downto 0);
+	signal speech_en	:  std_logic;
 	signal sc01_cs			:  std_logic;
 	
 	signal send_flag	:  std_logic:='0';
@@ -162,6 +166,10 @@ begin
 					is_SYS1 when game_sel( 5 downto 4) = "00" else
 					is_special;
 
+-- Le leurre etait strobe SANS CONDITION alors que son AR n'est consomme que
+-- pour la MA-216 : inoffensif tant que rien ne sortait, dangereux des qu'il y a du son.
+speech_en <= '1' when SB_type = is_MA216 else '0';
+
 	
 META1: entity work.Cross_Slow_To_Fast_Clock_Bus
 port map(
@@ -182,13 +190,24 @@ port map(
          txd => DFP_tx			
 );
 
-SC01_Simu: entity work.SC01
-port map(   			
+-- Le VRAI Votrax SC-01A, a la place du leurre. Meme polarite d'AR ('1' = pret),
+-- donc riot_pb_i(7) et n_cpu_nmi ne changent pas. Il recoit HUIT bits de donnee
+-- et non six : les deux du haut ne servent qu'a l'inflexion, et seulement si on
+-- l'active (INFLECTION_SRC, defaut 0).
+SC01_Reel: entity work.sc01_glue
+generic map(
+	DDS_INC               => 3435974,   -- 720 kHz, valeur de la fiche technique
+	IGNORE_STB_WHILE_BUSY => true,      -- comme le leurre : pas de relance en cours de phoneme
+	INFLECTION_SRC        => 0          -- "00" : rien ne prouve que la MA-216 cablait I1/I2
+)
+port map(
          clk => clk_50,
+			reset_n => reset_l,
+			speech_en => speech_en,
 			strobe => sc01_strobe,
-			cpu_data => cpu_dout(5 downto 0),
-			AR => sc01_AR,
-         rst => reset_l
+			cpu_data => cpu_dout,
+			ar => sc01_AR,
+			audio_s18 => sc01_audio
 );
 
 -- phase 2 is complement of CPU clock
@@ -465,13 +484,25 @@ audio_dat <= audio_dat_latch when ( SB_type = is_MA216 or SB_type = is_MA309) el
 				 
 				 
 -- Delta-Sigma audio DAC
+-- Les deux voies se rejoignent ICI. Sur la carte de bontango elles se melangent
+-- en analogique, chacune avec son potentiometre ; le SC-01A etant desormais dans
+-- le FPGA, la somme est numerique et il faut la borner soi-meme.
+Melangeur : entity work.audio_mix
+generic map( SPCH_GAIN => 512 )
+port map(
+   clk        => clk_50,
+   gosof_u8   => audio_dat,
+   speech_s18 => sc01_audio,
+   dac_u16    => audio_mixe
+);
+
 Audio_DAC : entity work.dac
 generic map(
-  msbi_g => 7)
+  msbi_g => 15)
 port  map(
    clk_i   => clk_50,
    res_n_i => reset_l,
-   dac_i   => audio_dat,
+   dac_i   => audio_mixe,
    dac_o   => audio_O
 );
 

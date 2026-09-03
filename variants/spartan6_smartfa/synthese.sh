@@ -30,6 +30,14 @@ rm -rf "$D"; mkdir -p "$D/xst/projnav.tmp"
 : > "$D/gosof.prj"
 for f in rtl/spartan6/gosof_mem.vhd rtl/spartan6/gosof_rom_ram.vhd \
          rtl/spartan6/gosof_roms.vhd \
+         rtl/votrax/sc01a_coeff_scales_pkg.vhd rtl/votrax/f1_rom.vhd \
+         rtl/votrax/f2v_rom.vhd rtl/votrax/f2n_rom.vhd rtl/votrax/f3_rom.vhd \
+         rtl/votrax/f4_rom.vhd rtl/votrax/fn_rom.vhd rtl/votrax/fx_rom.vhd \
+         rtl/votrax/sc01_rom.vhd rtl/votrax/sc01a_rom.vhd \
+         rtl/votrax/iir_filter_slow.vhd rtl/votrax/sc01a_filter.vhd \
+         rtl/votrax/sc01a_resamp.vhd rtl/votrax/sc01a.vhd \
+         rtl/spartan6/sc01_dds.vhd rtl/spartan6/sc01_glue.vhd \
+         rtl/spartan6/audio_mix.vhd \
          lib_common/T65_Pack.vhd lib_common/T65_MCode.vhd lib_common/T65_ALU.vhd \
          lib_common/T65.vhd lib_common/R6532.vhd \
          SPI_Master.vhd SD_Card.vhd DFPlayer_Mini_CMD.vhd Votrax-SC01.vhd \

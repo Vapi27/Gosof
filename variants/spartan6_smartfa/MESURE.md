@@ -202,3 +202,52 @@ Remplacer le SC01 factice ne supprime pas seulement un module. Ça supprime :
 Avec le vrai cœur, la parole vient de la ROM du jeu, phonème par phonème, pour
 tous les jeux, y compris ceux que personne n'a jamais enregistrés. Et la porte des
 phrases personnalisées s'ouvre sans un seul fichier audio.
+
+---
+
+## Intégration faite — le vrai SC-01A dans Gosof
+
+Élabore de bout en bout (ghdl, VHDL-2008) et **synthétise sans une erreur** :
+
+| | Gosof seul | **Gosof + SC-01A** | disponible |
+|---|---|---|---|
+| bascules | 592 (5 %) | **2 693 (23 %)** | 11 440 |
+| LUT | 1 524 (26 %) | **4 284 (74 %)** | 5 720 |
+| blocs mémoire | 3 (9 %) | **8 (25 %)** | 32 |
+| fréquence max | 69,4 MHz | **56,3 MHz** | besoin : 50 |
+
+Il reste **26 % de LUT** et **6,3 MHz** de marge d'horloge. C'est l'horloge qui
+limite, et c'est le SC-01A qui la fixe.
+
+### Ce qui a été vérifié avant d'écrire une ligne
+
+**La grille de durées du leurre EST celle du SC-01.** Sa table porte douze
+valeurs distinctes — 47, 55, 59, 65, 71, 80, 90, 103, 121, 146, 185, 250 ms —
+soit exactement la grille du vrai composant. Le vrai cœur ne change donc pas
+soixante-quatre durées : il change **un seul paramètre d'échelle**, `f_sc01`.
+
+**`AR` a la même polarité des deux côtés** (`'1'` = prêt, `'0'` = occupé),
+vérifié dans les deux sources. `riot_pb_i(7)` et `n_cpu_nmi` ne changent pas.
+
+**Le leurre a un défaut** : `time_map(to_integer(signed(cpu_data)))` sur six bits
+couvre −32 à +31, donc **tous les codes ≥ 0x20 indexent hors du tableau**. Ce que
+la machine fait aujourd'hui sur la moitié du jeu de phonèmes n'est pas une
+référence valable.
+
+### Les trois différences de comportement, traitées
+
+| | le leurre | le vrai cœur | ce que fait `sc01_glue` |
+|---|---|---|---|
+| double strobe | ignoré pendant la parole | relance sans condition | `IGNORE_STB_WHILE_BUSY`, défaut vrai |
+| porte de carte | strobé sans condition | — | `speech_en` = MA-216 seule |
+| inflexion | inexistante | deux bits | `"00"` par défaut, D7/D6 en option |
+
+### Ce qui ne se règle qu'à l'oreille
+
+Le leurre émet **1,2 ms par unité de durée** (« +20 % », dit son en-tête) ; le
+vrai cœur à 720 kHz est donc **~15 % plus rapide** que ce que la machine fait
+aujourd'hui. Reproduire le tempo actuel demanderait 614 kHz — mais la même
+horloge fixe **aussi la hauteur de la voix**. Tempo et timbre ne se règlent pas
+séparément : il faut choisir, et ça s'écoute.
+
+`DDS_INC` est là pour ça, avec sa table de valeurs.
