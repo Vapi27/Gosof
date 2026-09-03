@@ -41,9 +41,17 @@ entity banc_sc01 is
 	port (
 		clk_50     : in  std_logic;                     -- P51, oscillateur Y2
 		reset_sw   : in  std_logic;                     -- P32, bouton, actif BAS
-		audio_o    : out std_logic;                     -- P44 = position P4.6
-		led_parle  : out std_logic;                     -- P43, allumee pendant un phoneme
-		led_coeur  : out std_logic                      -- P40, battement ~1,5 Hz
+		-- LE MEME SIGNAL AUDIO SUR LES QUATRE SORTIES DU CONNECTEUR P4.
+		-- Mesure au banc : le haut-parleur de la porteuse de Valere est cable sur
+		-- P4.3, la position que le brochage GottFA80 nomme « LED_ON ». On l'a su
+		-- parce qu'il a ENTENDU le battement de coeur a 1,5 Hz -- 50 MHz / 2^25 =
+		-- 1,49 Hz, au dixieme pres. Plutot que de deviner laquelle est la bonne, ou
+		-- de faire deplacer un fil qui ne se deplace pas, on emet sur les quatre.
+		-- Aucune ne porte autre chose que des LED ou l'audio dans ce brochage.
+		audio_p43  : out std_logic;                     -- P4.3  (« LED_ON »)
+		audio_p45  : out std_logic;                     -- P4.5  (« LED_SDcard »)
+		audio_p46  : out std_logic;                     -- P4.6  (« Sound », l'audio d'origine)
+		audio_p47  : out std_logic                      -- P4.7  (« LED_Int »)
 	);
 end banc_sc01;
 
@@ -100,7 +108,7 @@ architecture rtl of banc_sc01 is
 	signal ar       : std_logic;
 	signal sc01_s18 : signed(17 downto 0);
 	signal melange  : std_logic_vector(15 downto 0);
-	signal coeur    : unsigned(24 downto 0) := (others => '0');
+	signal flux     : std_logic;
 
 begin
 
@@ -253,22 +261,18 @@ begin
 			clk_i   => clk_50,
 			res_n_i => reset_n,
 			dac_i   => melange,
-			dac_o   => audio_o
+			dac_o   => flux
 		);
 
-	-- ------------------------------------------------------------------
-	-- Les deux temoins. led_coeur bat meme dans le silence : c'est lui qui
-	-- distingue « le bitstream ne tourne pas » de « il tourne mais on n'entend
-	-- rien », les deux se ressemblant beaucoup au banc.
-	-- ------------------------------------------------------------------
-	Battement : process (clk_50)
-	begin
-		if rising_edge(clk_50) then
-			coeur <= coeur + 1;
-		end if;
-	end process;
+	-- Les quatre sorties portent le meme flux delta-sigma.
+	audio_p43 <= flux;
+	audio_p45 <= flux;
+	audio_p46 <= flux;
+	audio_p47 <= flux;
 
-	led_coeur <= coeur(24);          -- 50 MHz / 2^25 ~= 1,5 Hz
-	led_parle <= not ar;             -- allumee pendant qu'un phoneme sort
+	-- Plus aucun temoin LED : sur un module nu au banc, LED_ON / LED_SDcard /
+	-- LED_Int ne sont que des POSITIONS DE CONNECTEUR -- les diodes sont sur la
+	-- porteuse. Je les avais donnees comme temoins fiables, elles ne l'etaient
+	-- pas. Le son lui-meme est le seul temoin qui vaille ici.
 
 end rtl;

@@ -24,14 +24,14 @@ architecture essai of tb_banc is
 	signal clk       : std_logic := '0';
 	signal reset_sw  : std_logic := '1';   -- bouton relache (rappel haut)
 	signal audio_o   : std_logic;
-	signal led_parle : std_logic;
-	signal led_coeur : std_logic;
+	signal a2, a3, a4 : std_logic;
 begin
 	clk <= not clk after 10 ns;
 
 	dut : entity work.banc_sc01
-		port map (clk_50 => clk, reset_sw => reset_sw, audio_o => audio_o,
-		          led_parle => led_parle, led_coeur => led_coeur);
+		port map (clk_50 => clk, reset_sw => reset_sw,
+		          audio_p43 => audio_o, audio_p45 => a2,
+		          audio_p46 => a3, audio_p47 => a4);
 
 	-- Filtre-decimateur : somme des '1' par fenetre. Une valeur par ligne.
 	capture : process(clk)
@@ -61,8 +61,8 @@ begin
 	-- Temoin : quand le premier phoneme part, et quand le premier son sort.
 	mouchard : process
 	begin
-		wait until led_parle = '1' for 100 ms;
-		report "PREMIER PHONEME (led_parle) a " & time'image(now);
+		wait for 50 ms;
+		report "banc en marche a " & time'image(now);
 		wait;
 	end process;
 end essai;
