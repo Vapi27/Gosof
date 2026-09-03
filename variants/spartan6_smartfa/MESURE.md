@@ -251,3 +251,60 @@ horloge fixe **aussi la hauteur de la voix**. Tempo et timbre ne se règlent pas
 séparément : il faut choisir, et ça s'écoute.
 
 `DDS_INC` est là pour ça, avec sa table de valeurs.
+
+---
+
+## Au plus près de l'origine — ce que la recherche a changé
+
+Je cherchais « la » fréquence d'horloge du SC-01 sur la carte Gottlieb. Il n'y en
+a pas : **c'est le jeu qui l'écrit**, en cours de phrase.
+
+MAME, `src/mame/shared/gottlieb_a.cpp` :
+
+```cpp
+map(0x3000, 0x3000).mirror(0x0fff).w(FUNC(speech_clock_dac_w));
+
+u32 convert_speech_clock(u8 data) {
+    if (data < 0x40) data = 0x40;
+    // totally random guesswork; would like to get real measurements on a board
+    m_speech_clock = 950000 + (data - 0xa0) * 5500;
+}
+```
+
+La page `0x3xxx` est un convertisseur qui fixe l'horloge du SC-01 — c'est ainsi
+que Gottlieb fait varier la hauteur de la voix. **Gosof décodait déjà cette page**
+(`dac_latch_speech`, `cpu_addr(14 downto 12) = "011"`) **et jetait la valeur.**
+
+Confirmé côté matériel par vos propres manuels : la liste de pièces de la carte
+son de Volcano et de Mars porte `R9 Potentiometer, 2M, Bourns 3006P-205` à côté
+du `U14 Voice Chip SC01` — le réseau RC est en plus ajustable à la main.
+
+### Ce qui est câblé maintenant
+
+L'octet écrit par le jeu arrive au DDS. La formule de MAME est reprise, mais
+traduite en **multiplication** au lieu de la division 64 bits de l'exemple de
+shufps :
+
+    inc = 4533577 + (d - 160) × 26247        (d borné à 0x40 minimum)
+
+Écart mesuré contre MAME : **moins de 0,5 Hz** de 422 kHz à 1,4725 MHz. Coût :
+**42 LUT**.
+
+`IS_SC01A` passe aussi à **1** : MAME note `VOTRAX_SC01` pour le début 1981 et
+`VOTRAX_SC01A` « past mid-late 1981 ». Les jeux à parole de Gosof vont de 1981
+à 1983.
+
+### Occupation finale
+
+| | valeur | dispo | |
+|---|---|---|---|
+| bascules | 2 702 | 11 440 | 23 % |
+| LUT | 4 326 | 5 720 | **75 %** |
+| blocs mémoire | 8 | 32 | 25 % |
+| fréquence max | **56,3 MHz** | besoin 50 | marge 6,3 |
+
+⚠️ Et la mise en garde de MAME reste entière : *« totally random guesswork; would
+like to get real measurements on a board »*. La formule est la meilleure référence
+publique, pas une mesure. Si vous avez une carte MA-216 d'origine, un
+fréquencemètre sur la broche d'horloge du SC-01 pendant une phrase vaudrait plus
+que tout ce qui précède — et ce serait une contribution à MAME.

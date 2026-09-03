@@ -129,6 +129,7 @@ architecture rtl of gosof80 is
 	signal sc01_AR			:  std_logic;
 	-- ajouts du portage : la voie parole, son melange, et la porte de carte
 	signal sc01_audio	:  signed(17 downto 0);
+	signal speech_clk_dac	:  std_logic_vector(7 downto 0) := x"A0";
 	signal audio_mixe	:  std_logic_vector(15 downto 0);
 	signal speech_en	:  std_logic;
 	signal sc01_cs			:  std_logic;
@@ -196,7 +197,7 @@ port map(
 -- l'active (INFLECTION_SRC, defaut 0).
 SC01_Reel: entity work.sc01_glue
 generic map(
-	DDS_INC               => 3435974,   -- 720 kHz, valeur de la fiche technique
+	PILOTE_PAR_LE_JEU     => true,      -- l'horloge du SC-01 suit l'octet ecrit par le jeu
 	IGNORE_STB_WHILE_BUSY => true,      -- comme le leurre : pas de relance en cours de phoneme
 	INFLECTION_SRC        => 0          -- "00" : rien ne prouve que la MA-216 cablait I1/I2
 )
@@ -206,6 +207,7 @@ port map(
 			speech_en => speech_en,
 			strobe => sc01_strobe,
 			cpu_data => cpu_dout,
+			clk_dac => speech_clk_dac,
 			ar => sc01_AR,
 			audio_s18 => sc01_audio
 );
@@ -469,6 +471,17 @@ port map(
 );
 
 --Latch for pulling DAC data from the CPU data bus
+-- La page 0x3xxx fixe l'horloge du SC-01 sur la vraie carte : Gosof la decodait
+-- deja (dac_latch_speech) et jetait la valeur. On la garde.
+Speech_Clock_Latch: Process(clk_50) is
+Begin
+	If rising_edge(clk_50) then
+		if dac_latch_speech = '1' then
+			speech_clk_dac <= cpu_dout;
+		end if;
+	end if;
+end process;
+
 Audio_DAC_Latch: Process(clk_50) is
 Begin
 	If rising_edge(clk_50) then

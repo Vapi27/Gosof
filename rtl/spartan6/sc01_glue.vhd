@@ -33,15 +33,21 @@ use ieee.numeric_std.all;
 
 entity sc01_glue is
 	generic (
-		DDS_INC               : integer := 3435974;  -- 720 kHz nominal
+		-- Vrai : l'horloge du SC-01 suit l'octet que le JEU ecrit, comme sur la
+		-- vraie carte. Faux : elle est figee a DDS_INC_FIXE, pour experimenter.
+		PILOTE_PAR_LE_JEU     : boolean := true;
+		DDS_INC_FIXE          : integer := 3435974;   -- 720 kHz, si non pilote
 		IGNORE_STB_WHILE_BUSY : boolean := true;
-		INFLECTION_SRC        : integer := 0         -- 0 = "00", 1 = cpu_data(7..6)
+		INFLECTION_SRC        : integer := 0          -- 0 = "00", 1 = cpu_data(7..6)
 	);
 	port (
 		clk        : in  std_logic;
 		reset_n    : in  std_logic;
 		speech_en  : in  std_logic;                       -- '1' seulement sur une carte a parole
 		strobe     : in  std_logic;                       -- sc01_strobe de GOSOF80
+		-- L'octet ecrit par le jeu en page 0x3xxx : c'est lui qui fixe la
+		-- hauteur de la voix sur la vraie carte Gottlieb.
+		clk_dac    : in  std_logic_vector(7 downto 0);
 		cpu_data   : in  std_logic_vector(7 downto 0);    -- huit bits : D5..D0 + inflexion
 		ar         : out std_logic;
 		audio_s18  : out signed(17 downto 0)
@@ -54,7 +60,29 @@ architecture rtl of sc01_glue is
 	signal ar_coeur  : std_logic;
 	signal inflexion : std_logic_vector(1 downto 0);
 	signal audio_brut : signed(17 downto 0);
+	signal inc : unsigned(31 downto 0);
+	signal d_borne : integer range 64 to 255;
 begin
+	-- L'HORLOGE DU SC-01 EST ECRITE PAR LE JEU. Sur la carte Gottlieb, la page
+	-- 0x3xxx est un convertisseur qui fixe l'horloge du SC-01 : c'est ainsi que
+	-- le jeu fait varier la hauteur de la voix en cours de phrase. Gosof decodait
+	-- deja cette page (dac_latch_speech) et jetait la valeur.
+	--
+	-- Formule de MAME (src/mame/shared/gottlieb_a.cpp, convert_speech_clock) :
+	--     f = 950000 + (d - 0xA0) * 5500,  d borne a 0x40 minimum
+	-- MAME la donne pour ce qu'elle est : « totally random guesswork; would like
+	-- to get real measurements on a board ». C'est neanmoins la meilleure
+	-- reference publique, et shufps l'implemente a l'identique dans son exemple.
+	--
+	-- Traduite en increment de DDS, une MULTIPLICATION suffit — l'exemple de
+	-- shufps fait une division 64 bits, chere en logique pour le meme resultat :
+	--     inc = 4533577 + (d - 160) * 26247
+	-- Ecart mesure contre la formule de MAME : moins de 0,5 Hz sur toute la
+	-- plage, de 422 kHz a 1,4725 MHz.
+	d_borne <= 64 when unsigned(clk_dac) < 64 else to_integer(unsigned(clk_dac));
+
+	inc <= to_unsigned(4533577 + (d_borne - 160) * 26247, 32) when PILOTE_PAR_LE_JEU
+	  else to_unsigned(DDS_INC_FIXE, 32);
 	inflexion <= cpu_data(7 downto 6) when INFLECTION_SRC = 1 else "00";
 
 	-- La porte de carte, et le masque anti-double-strobe.
@@ -62,14 +90,14 @@ begin
 	        else strobe and speech_en;
 
 	horloges : entity work.sc01_dds
-		generic map (DDS_INC => DDS_INC)
-		port map (clk => clk, reset_n => reset_n,
+		port map (clk => clk, reset_n => reset_n, inc => inc,
 		          sclock_en => sclock_en, cclock_en => cclock_en);
 
 	coeur : entity work.sc01a
 		generic map (
 			ENABLE_F2N => false,   -- defaut de l'auteur, non verifie par lui, et +26 cycles
-			IS_SC01A   => 0        -- ce que choisissent ses deux exemples, dont Q*bert (Gottlieb)
+			IS_SC01A   => 1        -- MAME : SC01 au debut 1981, SC01A « past mid-late 1981 ».
+			                       -- Les jeux a parole de Gosof vont de 1981 a 1983.
 		)
 		port map (
 			clk         => clk,

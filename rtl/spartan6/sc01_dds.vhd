@@ -29,12 +29,12 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 entity sc01_dds is
-	generic (
-		DDS_INC : integer := 3435974          -- 720 kHz, la valeur nominale
-	);
 	port (
 		clk       : in  std_logic;
 		reset_n   : in  std_logic;
+		-- L'increment est un PORT et non un generique : sur la vraie carte
+		-- Gottlieb, le JEU ecrit l'horloge du SC-01 en cours de partie.
+		inc       : in  unsigned(31 downto 0);
 		sclock_en : out std_logic;
 		cclock_en : out std_logic
 	);
@@ -54,7 +54,7 @@ begin
 				sclock_en <= '0';
 				cclock_en <= '0';
 			else
-				somme     := ('0' & phase) + ('0' & to_unsigned(DDS_INC, 32));
+				somme     := ('0' & phase) + ('0' & inc);
 				phase     <= somme(31 downto 0);
 				sclock_en <= somme(32);          -- la retenue : f_sc01/18
 				cclock_en <= '0';
