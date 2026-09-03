@@ -160,8 +160,34 @@ dans le dossier du jeu.
 | le `SC01` | poignée de main seule ; son `AR` ne sert qu'au NMI et au port du RIOT, pour que le jeu ne se bloque pas |
 | le mélange | deux sources : le delta-sigma du FPGA, et la sortie analogique du DFPlayer |
 
-Le `background_sound` (fin de partie) est une **troisième** fonction du même
-module MP3, indépendante.
+Le `background_sound` (fin de partie) **n'est pas** une troisième fonction en
+parallèle, et je l'avais mal dit : le pilotage du module MP3 est **exclusif par
+type de carte** — `bg_*` pour MA-55 et System 1, la parole pour MA-216, MA-309 et
+MA-490 (`GOSOF80.vhd:354, 369, 371`). Et il n'a **jamais été publié** : le manuel
+utilisateur v1.01 du matériel 4.x.x n'en dit pas un mot.
+
+⚠️ Ne pas confondre avec le « background sound » du §4.1 du manuel, qui désigne
+le DIP #6 de la **carte Gottlieb d'origine** — la nappe sonore continue des
+System 80. Deux choses différentes sous le même nom.
+
+### Le manuel le dit lui-même
+
+Manuel utilisateur GOSOF HW 4.x.x / SW 4.01, §6 :
+
+> *« Gosof80 use a small device ('DFPlayer' Mini) for the **speeches** used by
+> some games. The speeches are stored on a standard micro SD card in the Mini
+> player. »*
+>
+> *« **You only need the DFPlayer Mini if you want to emulate a Gottlieb
+> soundboard which is capable of producing speech (Votrax chip).** Gottlieb games
+> with speech are: Mars - Volcano - Black Hole - Devil's Dare - Rocky - Striker -
+> Q\*Bert's Quest – Caveman »*
+
+Le module est donc **optionnel, et n'existe que pour la parole** de huit jeux.
+Le §6.1 décrit l'archive à télécharger et les dossiers numérotés par jeu (10
+Mars, 12 Volcano, 14 Black Hole, 18 Devils Dare, 20 Rocky, 23 Striker, 25
+Q\*Bert's Quest, 63 Caveman). La carte porte d'ailleurs **deux potentiomètres**,
+« Sound Vol. » et « Speech Vol. » — les deux sources sont mélangées en analogique.
 
 ### Ce que ça change pour le SC-01A
 
