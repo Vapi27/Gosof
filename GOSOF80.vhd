@@ -56,10 +56,10 @@ entity gosof80 is
 		DFP_tx	   : out STD_LOGIC;
 		
 		-- SDcard
-		SD_CS : buffer 	std_logic;		
+		SD_CS : out    	std_logic;		
 		SD_MISO : in 	std_logic;		
-		SD_MOSI : buffer 	std_logic;		
-		SD_CLK : buffer 	std_logic		
+		SD_MOSI : out    	std_logic;		
+		SD_CLK : out    	std_logic		
 		
 		);
 end gosof80;
@@ -83,6 +83,9 @@ architecture rtl of gosof80 is
 
 	signal Sound_meta : 	std_logic_vector(4 downto 0);
 	signal cpu_addr	:	std_logic_vector(15 downto 0);
+	-- portabilite VHDL-93 : le port A de T65 fait 24 bits et doit etre associe
+	-- en entier ; on en tranche ensuite les 16 bits utiles.
+	signal cpu_addr_24	:	std_logic_vector(23 downto 0);
 	signal cpu_din		: 	std_logic_vector(7 downto 0);
 	signal cpu_dout	:  std_logic_vector(7 downto 0);
 	signal n_cpu_nmi	: 	std_logic;
@@ -413,10 +416,12 @@ port map(
 	NMI_n => n_Cpu_nmi,
 	SO_n => '1',
 	R_W_n => cpu_wr_n,
-	A(15 downto 0) => cpu_addr,
+	A => cpu_addr_24,
 	DI => cpu_din,
 	DO => cpu_dout
 );	
+
+cpu_addr <= cpu_addr_24(15 downto 0);
 
 -- we use a 6532 also for MA55 and MA490, so we have to adjust the address
 addr_6532 <= cpu_addr(4 downto 0) when (SB_type = is_MA216 or SB_type = is_MA309) else
