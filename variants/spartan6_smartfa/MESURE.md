@@ -124,3 +124,55 @@ demande au minimum un filtre. La seule voie son identifiée sur la carte est
 Ça n'est pas un détail de câblage : si le son passe déjà par l'ESP, alors les
 sons personnalisés existent déjà de l'autre côté (GOSOWAV), et la question
 devient *où* les faire — pas *si*. À trancher avant d'écrire une ligne de plus.
+
+---
+
+## Comment la parole marche réellement sur Gosof — vérifié dans le code
+
+`GOSOF80.vhd:272` :
+
+```vhdl
+-- speech_ctrl 0 is speech (-> MP3-Player), 1 is 'other'
+-- starting with sound #31 down to sound #1
+speech_ctrl <=
+  "0000000000111111010111111111011" when game_sel = "111101" else  -- Black Hole
+  "0001000001100011011000110110011" when game_sel = "111110" else  -- Volcano
+  "1111111111111111111111111111111" when game_sel = "111010" else  -- Striker (aucune parole)
+  ...
+```
+
+Une **carte de 31 bits par jeu**, un bit par commande de son. Un `0` veut dire
+« cette commande est de la parole ». Et en `:372` :
+
+```vhdl
+send_flag <= ... and not speech_ctrl(to_integer(unsigned(Sound_meta)));
+```
+
+Quand le bit vaut 0, le module MP3 reçoit l'ordre de jouer la piste numéro *n*
+dans le dossier du jeu.
+
+**Donc, sur Gosof :**
+
+| | |
+|---|---|
+| le FPGA émule | le processeur, le RIOT, le DAC — la carte son, fidèlement |
+| la parole | **n'est pas synthétisée du tout** — enregistrements MP3 rejoués |
+| le `SC01` | poignée de main seule ; son `AR` ne sert qu'au NMI et au port du RIOT, pour que le jeu ne se bloque pas |
+| le mélange | deux sources : le delta-sigma du FPGA, et la sortie analogique du DFPlayer |
+
+Le `background_sound` (fin de partie) est une **troisième** fonction du même
+module MP3, indépendante.
+
+### Ce que ça change pour le SC-01A
+
+Remplacer le SC01 factice ne supprime pas seulement un module. Ça supprime :
+
+- la **carte de bits à maintenir à la main pour chaque jeu** ;
+- les **enregistrements par jeu et par phrase** à produire et à ranger sur une
+  carte SD ;
+- et la limite qui va avec — un jeu dont personne n'a enregistré les phrases
+  **n'a pas de parole**.
+
+Avec le vrai cœur, la parole vient de la ROM du jeu, phonème par phonème, pour
+tous les jeux, y compris ceux que personne n'a jamais enregistrés. Et la porte des
+phrases personnalisées s'ouvre sans un seul fichier audio.
