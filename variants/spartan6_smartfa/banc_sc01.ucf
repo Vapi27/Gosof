@@ -1,0 +1,72 @@
+#==============================================================================
+# banc_sc01.ucf — contraintes ISE pour le banc d'ecoute du SC-01A.
+#
+# Composant : XC6SLX9-2TQG144C (Spartan-6, TQFP-144)
+# Carte     : Pstore Smart FA V1.0 (module_slx16)
+# Sommet    : banc_sc01 — le SC-01A seul, sans Gosof, sans SD, sans 6502.
+#
+# CINQ BROCHES, TOUTES RECOPIEES D'UN FICHIER EPROUVE. Aucune n'est deduite :
+# chacune porte la ligne d'origine de ~/gottfa-hw/pinout/GottFA80_SLX9.ucf, qui
+# est lui-meme la traduction du contrat de brochage CONNECTORS_MAP.md.
+#
+# ⚠️ P44 N'A PAS LE MEME SENS SELON LE BITSTREAM CHARGE. Dans la variante SD de
+#    WillFA7 (WillFA7_SLX9_sd.ucf:88) la meme broche porte CS_SDcard. Un montage
+#    audio laisse a demeure sur P4.6 se retrouverait sur le bus d'une carte SD si
+#    ce bitstream-la est recharge. Debrancher le filtre avant de changer de
+#    bitstream.
+#
+# ⚠️ SECURITE — reprise mot pour mot de provision/usb_install.py:15-18 :
+#    /!\ COUPER LE 43 V pendant toute la procedure : pendant chaque configuration
+#        du FPGA, HSWAPEN etant a la masse, TOUTES les broches utilisateur sont
+#        tirees au HAUT, et les grilles des MOSFET de bobines sont actives au
+#        niveau haut.
+#    /!\ NE JAMAIS alimenter l USB et P6 en meme temps : meme noeud +5 V, sans
+#        diode.
+#
+#    Le tirage BAS des broches inutilisees se demande a bitgen, pas ici :
+#    -g UnusedPin:Pulldown, verifie dans le .bgn par construire_banc.sh.
+#==============================================================================
+
+# --- Reglages globaux (identiques a GottFA80_SLX9.ucf:1-10) -------------------
+# Le regulateur U4 a ete supprime de la carte : la banque auxiliaire est en
+# 3,3 V. Sans cette ligne ISE suppose 2,5 V.
+CONFIG VCCAUX = "3.3";
+NET "clk_50" TNM_NET = TNM_clk50;
+TIMESPEC TS_clk50 = PERIOD "TNM_clk50" 20 ns HIGH 50%;
+
+# --- Les cinq signaux ---------------------------------------------------------
+# colonne de droite : la ligne d'origine dans GottFA80_SLX9.ucf
+
+NET "clk_50"      LOC = "P51" | IOSTANDARD = LVCMOS33;
+#   ligne 169 : NET "clk_50"  LOC = "P51"  # interne  IO_L31P_GCLK31_D14_2 (bq 2)
+#   oscillateur Y2 du module, 50 MHz.
+
+NET "audio_o"     LOC = "P44" | IOSTANDARD = LVCMOS33 | DRIVE = 12 | SLEW = SLOW;
+#   ligne 148 : NET "Sound"   LOC = "P44"  # P4.6     IO_L62P_D5_2  (bq 2)
+#   Que cette broche sorte bien un creneau LVCMOS33 est MESURE, pas suppose :
+#   gottfa-bitstreams/spartan6_nor/sys80_map.mrp:484
+#     | Sound | IOB | OUTPUT | LVCMOS33 | | 12 | SLOW |
+#   d'ou DRIVE=12 et SLEW=SLOW, repris a l'identique.
+#   Le filtre RC exige par dac.vhd:9-16 se cable ici : 3,3 kOhm en serie,
+#   4,7 nF vers la masse. La masse la plus proche est P4.8, a 2,54 mm.
+
+NET "reset_sw"    LOC = "P32" | IOSTANDARD = LVCMOS33 | PULLUP;
+#   ligne 137 : NET "reset_sw" LOC = "P32" # P3.25    IO_L2N_3      (bq 3)
+#   Bouton actif BAS. Le PULLUP est indispensable : la carte n'en porte aucun
+#   (le tirage de HSWAPEN disparait des la fin de la configuration) et une
+#   entree de reset flottante redemarre le banc au hasard.
+
+NET "led_parle"   LOC = "P43" | IOSTANDARD = LVCMOS33;
+#   ligne 145 : NET "LED_SDcard" LOC = "P43" # P4.5   IO_L62N_D6_2  (bq 2)
+
+NET "led_coeur"   LOC = "P40" | IOSTANDARD = LVCMOS33;
+#   ligne 144 : NET "LED_ON"     LOC = "P40" # P4.3   IO_L64N_D9_2  (bq 2)
+
+# --- Ce qui n'est PAS contraint, et pourquoi ---------------------------------
+# Les 97 autres E/S ne sont pas declarees : le sommet ne les instancie pas, donc
+# ngdbuild n'a rien a y placer. Elles sont mises au niveau BAS par bitgen
+# (UnusedPin:Pulldown) — c'est la ligne qui protege les grilles des MOSFET de
+# bobines, actives au niveau HAUT, sur une porteuse.
+#
+# La polarite des trois LED n'est PAS etablie sur cette carte. Si un temoin
+# parait inverse, c'est cela : ce n'est pas un defaut du banc.
