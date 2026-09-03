@@ -31,6 +31,7 @@ D=${1:-/tmp/banc_sc01}
 COMPOSANT=xc6slx9-2-tqg144
 rm -rf "$D"; mkdir -p "$D/xst/projnav.tmp"
 cp "$R/variants/spartan6_smartfa/banc_sc01.ucf" "$D/"
+cp "$R/variants/spartan6_smartfa/banc_sc01.xcf" "$D/"
 
 # --- liste des sources -------------------------------------------------------
 # Le strict necessaire pour produire du son : le coeur SC-01A, ses ROMs de
@@ -62,12 +63,18 @@ run
 -opt_level 1
 -ifmt mixed
 -iobuf YES
+-uc $D/banc_sc01.xcf
 FIN
 
 cd "$D"
 echo "== 1/6 synthese (xst) =="
-$X/xst -intstyle silent -ifn banc.xst
-grep -E '^ERROR' banc_sc01.syr | head -12 && { echo "XST : erreurs, ARRET"; exit 1; } || true
+# -ofn nomme le RAPPORT ici (pas la netlist, qui est fixee dans banc.xst).
+$X/xst -intstyle silent -ifn banc.xst -ofn banc_sc01.syr > xst.log 2>&1 || true
+# `grep ... | head && exit` prendrait le code de head, qui vaut 0 meme sans
+# correspondance : le script s arreterait toujours. Il faut grep -q, seul.
+if grep -qE '^ERROR' banc_sc01.syr xst.log 2>/dev/null; then
+  echo "XST : erreurs, ARRET"; grep -hE '^ERROR' banc_sc01.syr xst.log | head -12; exit 1
+fi
 
 echo "== 2/6 ngdbuild =="
 $X/ngdbuild -intstyle silent -p $COMPOSANT -uc banc_sc01.ucf banc_sc01.ngc banc_sc01.ngd
@@ -84,6 +91,24 @@ $X/trce -intstyle silent -v 10 banc_sc01.ncd banc_sc01.pcf -o banc_sc01.twr || t
 # donne un circuit qui parle de travers sans rien signaler.
 if grep -qE '[1-9][0-9]* +(timing )?errors? detected' banc_sc01.twr 2>/dev/null; then
   echo "TIMING NON TENU — voir $D/banc_sc01.twr"; grep -E 'errors? detected' banc_sc01.twr; exit 1
+fi
+
+# ERRATUM 9K, VERIFIE SUR LE DESIGN PLACE. AR 34712 vise le mode SIMPLE DUAL
+# PORT ("9K Simple Dual Port (SDP) Block RAM Initialization Incorrect"). bitgen
+# avertit pour TOUT RAMB8BWER, ce qui est plus large que l'erratum. On regarde
+# donc le mode reellement configure, pas le simple fait qu'un bloc de 9 K existe.
+$X/xdl -ncd2xdl banc_sc01.ncd banc_sc01.xdl > /dev/null 2>&1 || true
+if [ -s banc_sc01.xdl ]; then
+  echo "   blocs de 9 K places :"
+  grep -E "^inst .*RAMB8BWER" banc_sc01.xdl | sed 's/^inst "/     /;s/".*//' || echo "     aucun"
+  # RAM_MODE en SDP est la seule configuration visee par l'erratum.
+  if grep -A80 "RAMB8BWER" banc_sc01.xdl | grep -qiE "RAM_MODE:+[^:]*:SDP|DATA_WIDTH_A:+[^:]*:36"; then
+    echo "   /!\\ un bloc de 9 K est en SIMPLE DUAL PORT : erratum AR 34712 APPLICABLE, ARRET"
+    exit 1
+  fi
+  echo "   aucun bloc de 9 K en mode SDP -> erratum AR 34712 hors sujet ici."
+else
+  echo "   /!\\ xdl n a pas produit de netlist : mode des blocs NON VERIFIE."
 fi
 
 echo "== 6/6 bitgen puis SVF =="

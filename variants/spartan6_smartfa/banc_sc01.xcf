@@ -1,0 +1,33 @@
+# banc_sc01.xcf — contraintes de synthese XST.
+#
+# POURQUOI CE FICHIER EXISTE : un ERRATUM SILICIUM du Spartan-6, pas un reglage
+# de confort. Documentation Xilinx (Answer Record 39999, repris dans le message
+# WARNING:PhysDesignRules:2410 emis par bitgen) :
+#
+#     « Block RAM used in the 9K mode (RAMB8BWER) can fail to initialize user
+#       data or default values during configuration. 9K Block RAM initialization
+#       data, both user defined and default, may be incorrect and should not be
+#       used. »
+#
+# Le contournement officiel est d'utiliser des blocs de 18 K, ou d'ecrire le
+# contenu apres configuration. Or le premier build a mis TROIS tables en blocs de
+# 9 K, dont u_f1_rom et u_f3_rom -- les tables de formants F1 et F3, c'est-a-dire
+# exactement ce qui determine le timbre de la voix. Une initialisation ratee la
+# rendrait fausse, ou muette, SANS QUE RIEN NE LE SIGNALE : ni la synthese, ni le
+# placement, ni le timing, ni une LED.
+#
+# XST ne sait pas forcer la taille d'un bloc. On sort donc ces tables du bloc :
+# en ROM distribuee (LUT), la question de l'initialisation ne se pose plus du tout
+# -- le contenu fait partie de la configuration des LUT.
+#
+# Elles sont petites : 128 mots de 18 bits chacune. Le cout se mesure au build,
+# il ne s'estime pas ici.
+# MESURE : sortir AUSSI f2v_rom (4096 x 18) ne tient pas. Une ROM distribuee
+# n'occupe que des slices SLICEM, minoritaires sur le LX9, et map refuse :
+#   ERROR:Place:543 - This design does not fit into the number of slices available
+# f2v_rom reste donc en bloc. Le bloc de 9 K qui subsiste est verifie APRES le
+# placement : l'erratum documente (AR 34712) vise le mode SIMPLE DUAL PORT, pas
+# tout bloc de 9 K, et une ROM en lecture seule n'est pas en SDP. Le controle est
+# dans construire_banc.sh, sur le design PLACE et non sur une supposition.
+MODEL "f1_rom" rom_style = "distributed";
+MODEL "f3_rom" rom_style = "distributed";
