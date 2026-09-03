@@ -71,3 +71,56 @@ de coefficients (mesure faite dans cette configuration).
 
 ⚠️ Et la question qui domine reste entière : **ces chiffres sont Gosof seul, pas
 Gosof à côté de GottFA80** sur la même puce.
+
+---
+
+## Sons personnalisés — faisabilité mesurée
+
+Trois voies, très inégales.
+
+### 1. Parole personnalisée par le SC-01A — quasi gratuite, et la plus distinctive
+
+Le SC-01A prend des **codes de phonèmes**. Lui en donner une suite quelconque
+produit une phrase quelconque, **sans aucun enregistrement**. Il suffit d'une
+table de phrases et d'un séquenceur : quelques dizaines de LUT.
+
+C'est précisément ce que le SC01 factice ne peut pas faire, et ce qu'aucun module
+MP3 ne fait — celui-ci rejoue des fichiers, il ne parle pas.
+
+### 2. Échantillons en mémoire interne — court mais immédiat
+
+| | blocs libres | capacité | à 11 kHz 8 bits |
+|---|---|---|---|
+| Gosof seul | 29 | 65,2 Ko | **6,1 s** |
+| Gosof + SC-01A | 23 | 51,8 Ko | **4,8 s** |
+
+Assez pour quelques effets courts. Pas pour de la musique.
+
+### 3. Échantillons depuis la carte SD — le débit suffit, le lecteur non
+
+Le lecteur tourne à **400 kHz**, soit 50 000 o/s en théorie. Sur le papier ça
+couvre même du 22 kHz 16 bits (44,1 ko/s). Mais le code lit **octet par octet**
+(son propre commentaire dit *« slooow »*) et charge **au démarrage** — quatre
+blocs de 4 Ko dans les deux ROMs de 2 Ko. Il n'y a ni double tampon ni diffusion
+continue.
+
+Passer `SPI_Taktfrequenz` de 400 kHz à quelques MHz (une carte SD en accepte 25)
+et ajouter un double tampon lève la limite. C'est du travail modéré, pas une
+refonte.
+
+### Place restante pour tout ça
+
+LUT libres : **4 196 (73 %)** avec Gosof seul, **1 313 (23 %)** si l'on ajoute le
+SC-01A. Un lecteur d'échantillons et un mélangeur tiennent dans 23 % ; pas
+beaucoup plus.
+
+### ⚠️ Ce que je n'ai PAS pu établir
+
+**Où sort physiquement l'audio de Gosof sur le Smart FA.** Le module ne
+documente aucun DAC ni ampli, et `dac.vhd` produit un flux delta-sigma 1 bit qui
+demande au minimum un filtre. La seule voie son identifiée sur la carte est
+`Audio_RX` (P41), une liaison série **vers l'ESP**.
+
+Ça n'est pas un détail de câblage : si le son passe déjà par l'ESP, alors les
+sons personnalisés existent déjà de l'autre côté (GOSOWAV), et la question
+devient *où* les faire — pas *si*. À trancher avant d'écrire une ligne de plus.
