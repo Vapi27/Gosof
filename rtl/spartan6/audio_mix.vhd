@@ -46,7 +46,12 @@ entity audio_mix is
 		-- la voie « parole », signee, telle qu'elle sort du SC-01A
 		speech_s18 : in  signed(17 downto 0);
 		-- vers dac.vhd, qui est NON SIGNE : binaire decale
-		dac_u16    : out std_logic_vector(15 downto 0)
+		dac_u16    : out std_logic_vector(15 downto 0);
+		-- '1' le cycle ou la somme a ete ECRETEE. La saturation n'est pas
+		-- optionnelle (sans elle un son fort plus une parole forte reboucle en
+		-- negatif : un claquement pleine puissance dans le haut-parleur), mais on
+		-- ne savait pas si elle etait ATTEINTE en pratique. Cette sortie le dit.
+		sature     : out std_logic
 	);
 end audio_mix;
 
@@ -70,6 +75,7 @@ architecture rtl of audio_mix is
 	signal parole  : signed(17 downto 0);
 	signal somme   : signed(18 downto 0);
 	signal melange : signed(17 downto 0);
+	signal ecrete  : std_logic;
 begin
 	-- 8 bits non signes, milieu a 0x80, vers +-65536 : la moitie de l'echelle,
 	-- soit 6 dB de reserve pour la parole.
@@ -92,12 +98,15 @@ begin
 
 	somme   <= resize(gos_s18, 19) + resize(parole, 19);
 	melange <= borner(somme);
+	ecrete  <= '1' when somme > to_signed(CRETE_P, 19) or somme < to_signed(CRETE_N, 19)
+	      else '0';
 
 	process (clk)
 	begin
 		if rising_edge(clk) then
 			-- signe -> binaire decale : inverser le bit de signe.
 			dac_u16 <= (not melange(17)) & std_logic_vector(melange(16 downto 2));
+			sature  <= ecrete;
 		end if;
 	end process;
 end rtl;

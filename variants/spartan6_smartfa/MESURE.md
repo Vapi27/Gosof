@@ -1,310 +1,182 @@
-# Gosof sur Spartan-6 — mesure de place
+# Gosof sur Spartan-6 — ce qui est mesuré, et ce qui ne l'est pas
 
-Synthèse XST 14.7, `xc6slx9-2-tqg144`, sommet `gosof80`, **0 erreur**.
+Cible : `xc6slx9-2-tqg144` (Pstore Smart FA V1.0), chaîne ISE 14.7.
 
-| | utilisé | disponible | |
-|---|---|---|---|
-| bascules | 592 | 11 440 | 5 % |
-| LUT | 1 524 | 5 720 | **26 %** |
-| blocs mémoire | 3 | 32 | 9 % |
-| broches | 33 | 102 | 32 % |
-
-Fréquence maximale **69,4 MHz** pour une horloge à 50 — la marge est confortable.
-
-## Ce que cette mesure vaut
-
-Elle mesure la **logique**, et elle est juste : les entités, les ports et les
-latences sont ceux de l'original, et les mémoires sont réellement instanciées.
-
-Elle ne produit **pas un circuit jouable** : les ROMs de jeu ne sont pas dans le
-dépôt amont (BH, Volcano, Mars, Rocky, Striker, DD) et portent ici un motif dérivé
-de l'adresse. Le contenu ne change ni la logique ni le nombre de blocs — mais rien
-ne sortirait du haut-parleur.
-
-Trois blocs mémoire seulement, et non les 4,5 attendus des 81 Kbit déclarés : XST
-place certaines mémoires en LUT (lecture asynchrone, `Mram_time_map`).
-
-## Ce qui reste à mesurer
-
-**Gosof tient. La question ouverte est s'il tient À CÔTÉ de GottFA80** sur le même
-FPGA — c'est l'intérêt réel, puisque sur le Smart FA le processeur et le son
-partagent une seule puce. WillFA7 seul occupait 75 % des slices ; GottFA80 sur
-Spartan n'a pas été mesuré ici.
-
-Tant que ces deux chiffres ne sont pas posés côte à côte, « ça tient » ne veut rien
-dire pour l'usage visé.
+Ce fichier ne dit que ce qui a été **mesuré**. La distinction entre « synthétisé »,
+« placé-routé » et « entendu sur la carte » est le sujet du document, pas un détail
+de présentation : une version précédente publiait une « occupation finale » avec une
+marge de timing pour un circuit qui n'avait jamais vu `map`.
 
 ---
 
-## Remplacer le SC01 factice par un vrai — mesuré
+## 1. Ce qui a tourné sur du vrai silicium
 
-Le `SC01` de Gosof ne synthétise **aucune voix**. Son en-tête le dit :
+Un seul sommet est allé jusqu'au bout : **`banc_sc01`**, le SC-01A seul, sans le
+6502 ni la carte SD.
 
-> *« This is only a simulation of signaling to fool the program that SC01 is there »*
-
-Il imite la poignée de main (strobe / A/R) pour que la ROM du jeu ne se bloque
-pas ; la parole vient d'un module **DFPlayer Mini** qui rejoue des enregistrements.
-
-`shufps/votrax-sc01a-vhdl` est un vrai synthétiseur à formants (d'après la
-simulation MAME d'Olivier Galibert, BSD-3-Clause — compatible GPL). Synthétisé
-seul, sur le même composant :
-
-| | Gosof | SC-01A | somme |
+| | valeur | disponible | |
 |---|---|---|---|
-| bascules | 592 (5 %) | 2 061 (18 %) | 2 653 — **23 %** |
-| LUT | 1 524 (26 %) | 2 883 (50 %) | 4 407 — **77 %** |
-| blocs mémoire | 3 (9 %) | 6 (18 %) | 9 — **28 %** |
-| fréquence max | 69,4 MHz | **56,3 MHz** | — |
+| LUT | 3 279 | 5 720 | 57 % |
+| bascules | 2 314 | 11 440 | 20 % |
+| blocs 18 K | 4 | 32 | 12 % |
+| blocs 9 K | 1 | 64 | 2 % |
+| fréquence | **56,3 MHz** | besoin 50 | marge 6,3 |
 
-**Ça tient**, avec 23 % de LUT de marge. L'interface tombe juste : le cœur expose
-`p(5:0)`, `stb` et `ar`, exactement les trois signaux que Gosof câble déjà sur son
-SC01 factice.
+`Timing Score: 0`, « All constraints were met ». Les cinq broches relevées dans le
+**rapport de pastilles**, donc ce qui a été *posé* et non ce qui a été *demandé*.
+`UnusedPin | Pulldown` confirmé dans le `.bgn` — c'est la ligne qui tient les
+grilles des MOSFET de bobines au niveau bas sur une porteuse.
 
-Le risque n'est pas la place, c'est **l'horloge** : 56,3 MHz pour un besoin de 50,
-soit 12 % de marge, et c'est une estimation de synthèse — le placement-routage
-fait généralement moins bien. C'est le premier chiffre à surveiller.
+Chargé par USB (`PSTORE SVF`, 341 733 octets en 2,2 s) sur la carte de Valère.
 
-Restent deux travaux d'intégration : la sortie audio est un signé 18 bits, là où
-Gosof finit sur un DAC 8 bits — il faut mélanger et mettre à l'échelle ; et
-`ENABLE_F2N` est à `false` par défaut, ce qui écarte l'une des deux grosses tables
-de coefficients (mesure faite dans cette configuration).
+**Ce qui a été ENTENDU :** le battement de cœur à ~1,5 par seconde, dans le
+haut-parleur. 50 MHz / 2²⁵ = 1,49 Hz, au dixième près. C'est la seule preuve
+matérielle de toute la séance, et elle prouve trois choses d'un coup : le FPGA se
+configure, il tourne sur ce design, et son horloge est juste.
 
-⚠️ Et la question qui domine reste entière : **ces chiffres sont Gosof seul, pas
-Gosof à côté de GottFA80** sur la même puce.
+**Ce qui n'a PAS été entendu :** la parole. Le montage RC n'était pas en place.
 
----
+### L'erratum 9 K, vérifié et non supposé
 
-## Sons personnalisés — faisabilité mesurée
+`bitgen` émet `WARNING:PhysDesignRules:2410` dès qu'un `RAMB8BWER` existe. L'Answer
+Record 34712 vise en réalité le mode **Simple Dual Port** — pas tout bloc de 9 K.
+Le contrôle a donc été déplacé **après le placement** : `construire_banc.sh` ouvre
+la netlist placée avec `xdl` et lit le mode réellement configuré.
 
-Trois voies, très inégales.
-
-### 1. Parole personnalisée par le SC-01A — quasi gratuite, et la plus distinctive
-
-Le SC-01A prend des **codes de phonèmes**. Lui en donner une suite quelconque
-produit une phrase quelconque, **sans aucun enregistrement**. Il suffit d'une
-table de phrases et d'un séquenceur : quelques dizaines de LUT.
-
-C'est précisément ce que le SC01 factice ne peut pas faire, et ce qu'aucun module
-MP3 ne fait — celui-ci rejoue des fichiers, il ne parle pas.
-
-### 2. Échantillons en mémoire interne — court mais immédiat
-
-| | blocs libres | capacité | à 11 kHz 8 bits |
-|---|---|---|---|
-| Gosof seul | 29 | 65,2 Ko | **6,1 s** |
-| Gosof + SC-01A | 23 | 51,8 Ko | **4,8 s** |
-
-Assez pour quelques effets courts. Pas pour de la musique.
-
-### 3. Échantillons depuis la carte SD — le débit suffit, le lecteur non
-
-Le lecteur tourne à **400 kHz**, soit 50 000 o/s en théorie. Sur le papier ça
-couvre même du 22 kHz 16 bits (44,1 ko/s). Mais le code lit **octet par octet**
-(son propre commentaire dit *« slooow »*) et charge **au démarrage** — quatre
-blocs de 4 Ko dans les deux ROMs de 2 Ko. Il n'y a ni double tampon ni diffusion
-continue.
-
-Passer `SPI_Taktfrequenz` de 400 kHz à quelques MHz (une carte SD en accepte 25)
-et ajouter un double tampon lève la limite. C'est du travail modéré, pas une
-refonte.
-
-### Place restante pour tout ça
-
-LUT libres : **4 196 (73 %)** avec Gosof seul, **1 313 (23 %)** si l'on ajoute le
-SC-01A. Un lecteur d'échantillons et un mélangeur tiennent dans 23 % ; pas
-beaucoup plus.
-
-### ⚠️ Ce que je n'ai PAS pu établir
-
-**Où sort physiquement l'audio de Gosof sur le Smart FA.** Le module ne
-documente aucun DAC ni ampli, et `dac.vhd` produit un flux delta-sigma 1 bit qui
-demande au minimum un filtre. La seule voie son identifiée sur la carte est
-`Audio_RX` (P41), une liaison série **vers l'ESP**.
-
-Ça n'est pas un détail de câblage : si le son passe déjà par l'ESP, alors les
-sons personnalisés existent déjà de l'autre côté (GOSOWAV), et la question
-devient *où* les faire — pas *si*. À trancher avant d'écrire une ligne de plus.
-
----
-
-## Comment la parole marche réellement sur Gosof — vérifié dans le code
-
-`GOSOF80.vhd:272` :
-
-```vhdl
--- speech_ctrl 0 is speech (-> MP3-Player), 1 is 'other'
--- starting with sound #31 down to sound #1
-speech_ctrl <=
-  "0000000000111111010111111111011" when game_sel = "111101" else  -- Black Hole
-  "0001000001100011011000110110011" when game_sel = "111110" else  -- Volcano
-  "1111111111111111111111111111111" when game_sel = "111010" else  -- Striker (aucune parole)
-  ...
+```
+instances RAMB8BWER : 1        (pas 0 : il y avait bien quelque chose a examiner)
+inst "Parole/coeur_u_f2v_rom/Mram_..." "RAMB8BWER", placed BRAMSITE2_X3Y48
+RAM_MODE::TDP
 ```
 
-Une **carte de 31 bits par jeu**, un bit par commande de son. Un `0` veut dire
-« cette commande est de la parole ». Et en `:372` :
+True Dual Port : l'erratum ne s'applique pas. Si un bloc passait un jour en SDP,
+le build s'arrête.
 
-```vhdl
-send_flag <= ... and not speech_ctrl(to_integer(unsigned(Sound_meta)));
-```
-
-Quand le bit vaut 0, le module MP3 reçoit l'ordre de jouer la piste numéro *n*
-dans le dossier du jeu.
-
-**Donc, sur Gosof :**
-
-| | |
-|---|---|
-| le FPGA émule | le processeur, le RIOT, le DAC — la carte son, fidèlement |
-| la parole | **n'est pas synthétisée du tout** — enregistrements MP3 rejoués |
-| le `SC01` | poignée de main seule ; son `AR` ne sert qu'au NMI et au port du RIOT, pour que le jeu ne se bloque pas |
-| le mélange | deux sources : le delta-sigma du FPGA, et la sortie analogique du DFPlayer |
-
-Le `background_sound` (fin de partie) **n'est pas** une troisième fonction en
-parallèle, et je l'avais mal dit : le pilotage du module MP3 est **exclusif par
-type de carte** — `bg_*` pour MA-55 et System 1, la parole pour MA-216, MA-309 et
-MA-490 (`GOSOF80.vhd:354, 369, 371`). Et il n'a **jamais été publié** : le manuel
-utilisateur v1.01 du matériel 4.x.x n'en dit pas un mot.
-
-⚠️ Ne pas confondre avec le « background sound » du §4.1 du manuel, qui désigne
-le DIP #6 de la **carte Gottlieb d'origine** — la nappe sonore continue des
-System 80. Deux choses différentes sous le même nom.
-
-### Le manuel le dit lui-même
-
-Manuel utilisateur GOSOF HW 4.x.x / SW 4.01, §6 :
-
-> *« Gosof80 use a small device ('DFPlayer' Mini) for the **speeches** used by
-> some games. The speeches are stored on a standard micro SD card in the Mini
-> player. »*
->
-> *« **You only need the DFPlayer Mini if you want to emulate a Gottlieb
-> soundboard which is capable of producing speech (Votrax chip).** Gottlieb games
-> with speech are: Mars - Volcano - Black Hole - Devil's Dare - Rocky - Striker -
-> Q\*Bert's Quest – Caveman »*
-
-Le module est donc **optionnel, et n'existe que pour la parole** de huit jeux.
-Le §6.1 décrit l'archive à télécharger et les dossiers numérotés par jeu (10
-Mars, 12 Volcano, 14 Black Hole, 18 Devils Dare, 20 Rocky, 23 Striker, 25
-Q\*Bert's Quest, 63 Caveman). La carte porte d'ailleurs **deux potentiomètres**,
-« Sound Vol. » et « Speech Vol. » — les deux sources sont mélangées en analogique.
-
-### Ce que ça change pour le SC-01A
-
-Remplacer le SC01 factice ne supprime pas seulement un module. Ça supprime :
-
-- la **carte de bits à maintenir à la main pour chaque jeu** ;
-- les **enregistrements par jeu et par phrase** à produire et à ranger sur une
-  carte SD ;
-- et la limite qui va avec — un jeu dont personne n'a enregistré les phrases
-  **n'a pas de parole**.
-
-Avec le vrai cœur, la parole vient de la ROM du jeu, phonème par phonème, pour
-tous les jeux, y compris ceux que personne n'a jamais enregistrés. Et la porte des
-phrases personnalisées s'ouvre sans un seul fichier audio.
+⚠️ Une tentative de supprimer *tout* bloc de 9 K en poussant les ROMs en logique
+distribuée a **échoué au placement** : `ERROR:Place:543`. Une ROM distribuée
+n'occupe que des slices SLICEM, minoritaires sur le LX9 ; 4096 × 18 bits n'y
+tiennent pas. Ce n'était pas une question de patience.
 
 ---
 
-## Intégration faite — le vrai SC-01A dans Gosof
+## 2. Ce qui a tourné en simulation
 
-Élabore de bout en bout (ghdl, VHDL-2008) et **synthétise sans une erreur** :
+### Le SC-01A, neuf captures (ghdl)
 
-| | Gosof seul | **Gosof + SC-01A** | disponible |
+| ce qui est vérifié | méthode | résultat |
+|---|---|---|
+| hauteur ∝ octet du jeu | autocorrélation, 3 points | **0,6 %** |
+| durée ∝ 1/horloge (A+AY) | 5 horloges, rapport 3,49:1 | **0,014 %** |
+| durée ∝ 1/horloge (BALL) | 3 horloges, énoncé différent | **0,019 %** |
+| forme d'onde inchangée | pic identique d'une horloge à l'autre | 30 245 partout |
+| phonèmes émis | comptage des strobes | 2/2, 4/4, **8/8** |
+
+### `gosof80` — la première simulation du sommet
+
+Aucune n'avait jamais eu lieu. Elle a répondu à trois questions ouvertes.
+
+**Le T65 exécute la ROM du jeu.** Contrôle croisé, même banc, même circuit, seule
+la ROM change :
+
+| jeu | rapport cyclique | plage de fenêtre | niveaux |
 |---|---|---|---|
-| bascules | 592 (5 %) | **2 693 (23 %)** | 11 440 |
-| LUT | 1 524 (26 %) | **4 284 (74 %)** | 5 720 |
-| blocs mémoire | 3 (9 %) | **8 (25 %)** | 32 |
-| fréquence max | 69,4 MHz | **56,3 MHz** | besoin : 50 |
+| Volcano | 43,6 % | −130 … 0 | 7 |
+| Mars | 63,6 % | −130 … **+65** | 17 |
 
-Il reste **26 % de LUT** et **6,3 MHz** de marge d'horloge. C'est l'horloge qui
-limite, et c'est le SC-01A qui la fixe.
+Deux sons sans rapport, et Mars franchit le milieu que Volcano n'atteint jamais.
+Un DAC statique ne peut pas produire ça.
 
-### Ce qui a été vérifié avant d'écrire une ligne
+**Le jeu ÉCRIT la page `$3xxx`** — l'horloge du SC-01. 98 écritures en 12 ms, avec
+des valeurs qui changent : `127` à 673 µs, puis `192` à 2,37 ms, soit **768 kHz
+puis 1 126 kHz**. Conséquence directe : la valeur par défaut `x"A0"` ne décide pas
+du timbre de la machine — le jeu le pilote en cours de partie, comme sur la carte
+d'origine.
 
-**La grille de durées du leurre EST celle du SC-01.** Sa table porte douze
-valeurs distinctes — 47, 55, 59, 65, 71, 80, 90, 103, 121, 146, 185, 250 ms —
-soit exactement la grille du vrai composant. Le vrai cœur ne change donc pas
-soixante-quatre durées : il change **un seul paramètre d'échelle**, `f_sc01`.
-
-**`AR` a la même polarité des deux côtés** (`'1'` = prêt, `'0'` = occupé),
-vérifié dans les deux sources. `riot_pb_i(7)` et `n_cpu_nmi` ne changent pas.
-
-**Le leurre a un défaut** : `time_map(to_integer(signed(cpu_data)))` sur six bits
-couvre −32 à +31, donc **tous les codes ≥ 0x20 indexent hors du tableau**. Ce que
-la machine fait aujourd'hui sur la moitié du jeu de phonèmes n'est pas une
-référence valable.
-
-### Les trois différences de comportement, traitées
-
-| | le leurre | le vrai cœur | ce que fait `sc01_glue` |
-|---|---|---|---|
-| double strobe | ignoré pendant la parole | relance sans condition | `IGNORE_STB_WHILE_BUSY`, défaut vrai |
-| porte de carte | strobé sans condition | — | `speech_en` = MA-216 seule |
-| inflexion | inexistante | deux bits | `"00"` par défaut, D7/D6 en option |
-
-### Ce qui ne se règle qu'à l'oreille
-
-Le leurre émet **1,2 ms par unité de durée** (« +20 % », dit son en-tête) ; le
-vrai cœur à 720 kHz est donc **~15 % plus rapide** que ce que la machine fait
-aujourd'hui. Reproduire le tempo actuel demanderait 614 kHz — mais la même
-horloge fixe **aussi la hauteur de la voix**. Tempo et timbre ne se règlent pas
-séparément : il faut choisir, et ça s'écoute.
-
-`DDS_INC` est là pour ça, avec sa table de valeurs.
+**Le mélangeur n'écrête pas** dans ce scénario : `cycles ecretes=0`. À nuancer —
+seuls deux phonèmes ont été strobés, donc la voie parole était presque au repos.
+La branche de saturation reste non exercée.
 
 ---
 
-## Au plus près de l'origine — ce que la recherche a changé
+## 3. Ce qui n'est PAS établi
 
-Je cherchais « la » fréquence d'horloge du SC-01 sur la carte Gottlieb. Il n'y en
-a pas : **c'est le jeu qui l'écrit**, en cours de phrase.
+À lire avant d'engager quoi que ce soit sur ces chiffres.
 
-MAME, `src/mame/shared/gottlieb_a.cpp` :
+- **`gosof80` n'a jamais été placé-routé.** La mesure de synthèse (4 326 LUT,
+  2 702 bascules, 8 blocs, 56,3 MHz) vient de `xst` seul. `synthese.sh:5-7` le dit
+  lui-même : « SYNTHÈSE SEULE ». Ni `map`, ni `par`, ni `trce` n'ont tourné sur ce
+  sommet. Un design à 75 % de LUT peut très bien ne pas tenir les 20 ns.
+- **Il n'existe aucun `.ucf` pour `gosof80`.** Donc aucun bitstream, donc aucun
+  chargement.
+- **La parole n'a jamais été entendue**, ni en simulation du sommet ni sur la carte.
+- **La carte SD n'a jamais été lue.** Le chemin SPI, le format d'image et le
+  secteur 660 n'ont jamais été exercés sur ce portage.
+- **52 des 64 phonèmes** n'ont jamais produit un échantillon.
+- **Tous les chemins de générique de `sc01_glue`** sont du code jamais instancié,
+  dont le cas majoritaire `speech_en='0'` — toutes les familles sauf MA-216.
 
-```cpp
-map(0x3000, 0x3000).mirror(0x0fff).w(FUNC(speech_clock_dac_w));
+---
 
-u32 convert_speech_clock(u8 data) {
-    if (data < 0x40) data = 0x40;
-    // totally random guesswork; would like to get real measurements on a board
-    m_speech_clock = 950000 + (data - 0xa0) * 5500;
-}
+## 4. Les défauts trouvés, et comment
+
+Tous ont en commun de se compiler, de se placer et de se charger sans un mot.
+
+**Le gain de parole mis à zéro par une largeur.** `audio_mix.vhd` écrivait
+`to_signed(SPCH_GAIN, 11)`. Un signé de 11 bits va de −1024 à +1023 : à 1024 le
+gain s'**inversait**, à 2048 = 2¹¹ il valait **exactement zéro**. La branche parole
+devenait constante et XST supprimait tout le SC-01A — **102 LUT au lieu de 3 242**,
+2 525 nœuds retirés, zéro `ERROR`. L'en-tête du fichier disait pourtant « il doit
+pouvoir MONTER ». Corrigé : gain sur 16 bits, largeur en générique, `assert` qui
+arrête au lieu de tronquer. Et `construire_banc.sh` refuse désormais de continuer
+en dessous de 2 000 LUT.
+
+**Un index hors bornes à l'instant zéro.** `speech_ctrl` est déclaré `(31 downto 1)`
+et indexé par une valeur qui vaut 0 à 31 — et **0 est l'état de repos** des entrées
+son. Le garde à gauche du `and` était censé protéger, mais le `and` de VHDL n'est
+pas court-circuitant : les deux opérandes sont évalués. Ça se synthétise sans
+broncher et ça ne peut pas se simuler, ce qui explique sans doute que personne ne
+l'ait vu — il faut avoir simulé le sommet. **Défaut pristine**, identique dans
+`origin/main:GOSOF80.vhd:369`. À signaler à bontango, pas à corriger en silence.
+
+**Deux gardes écrites à l'envers.** `sc01_glue.vhd:86` et l'index ci-dessus. Avec
+une métavaleur, une comparaison IEEE rend FALSE et l'on tombe dans la branche non
+sûre. Le cas sûr doit être le **défaut**, pas le `else`. Le même piège deux fois
+dans la même séance.
+
+**Un latch sans valeur initiale.** `audio_dat_latch` valait `'U'` tant que le 6502
+n'avait pas écrit, ce qui propageait `'X'` jusqu'à `Audio_O` : **21 222 métavaleurs
+contre 0 valeur utile**. Initialisé à `0x80`, le point de repos exact de la voie son.
+
+**Et une leçon de méthode.** Le premier capteur comptait les `'1'` de `Audio_O`. Un
+flux bloqué à `'0'` et un flux à `'X'` donnent le **même** comptage, pour deux pannes
+sans rapport. Les bancs mesurent désormais la **répartition des valeurs**, et
+`tb_gosof80` échoue bruyamment si le son ne varie pas — un banc qui passe quoi qu'il
+arrive ne prouve rien.
+
+---
+
+## 5. Comment refaire ces mesures
+
+```sh
+# 1. extraire une ROM de jeu de l'image SD de bontango (HORS du depot)
+python3 outils/rom_vers_vhdl.py ~/gosof-roms/volcano_rom1.bin \
+        ~/gosof-roms/volcano_rom2.bin ~/gosof-roms/gosof_jeu_volcano.vhd --nom volcano
+
+# 2. simuler le sommet (ghdl). -fsynopsys : T65 utilise std_logic_unsigned.
+#    Le paquet du jeu remplace rtl/spartan6/gosof_jeu_vide.vhd dans la liste.
+ghdl -a --std=08 -fsynopsys -frelaxed ... ~/gosof-roms/gosof_jeu_volcano.vhd ...
+ghdl -e --std=08 -fsynopsys -frelaxed -o tbg tb_gosof80
+./tbg -gCODE_1=1 -gCODE_N=31 -gDUREE_US=4000
+
+# 3. le banc SC-01A, jusqu'au SVF (sur la machine qui porte ISE)
+sh variants/spartan6_smartfa/construire_banc.sh /tmp/banc_sc01
 ```
 
-La page `0x3xxx` est un convertisseur qui fixe l'horloge du SC-01 — c'est ainsi
-que Gottlieb fait varier la hauteur de la voix. **Gosof décodait déjà cette page**
-(`dac_latch_speech`, `cpu_addr(14 downto 12) = "011"`) **et jetait la valeur.**
+⚠️ Les ROMs de jeu ne sont **pas** dans ce dépôt et ne doivent jamais y être :
+code Gottlieb, dépôt GPL destiné à remonter chez bontango. `.gitignore` sert de
+filet, la règle passe avant le filet.
 
-Confirmé côté matériel par vos propres manuels : la liste de pièces de la carte
-son de Volcano et de Mars porte `R9 Potentiometer, 2M, Bourns 3006P-205` à côté
-du `U14 Voice Chip SC01` — le réseau RC est en plus ajustable à la main.
-
-### Ce qui est câblé maintenant
-
-L'octet écrit par le jeu arrive au DDS. La formule de MAME est reprise, mais
-traduite en **multiplication** au lieu de la division 64 bits de l'exemple de
-shufps :
-
-    inc = 4533577 + (d - 160) × 26247        (d borné à 0x40 minimum)
-
-Écart mesuré contre MAME : **moins de 0,5 Hz** de 422 kHz à 1,4725 MHz. Coût :
-**42 LUT**.
-
-`IS_SC01A` passe aussi à **1** : MAME note `VOTRAX_SC01` pour le début 1981 et
-`VOTRAX_SC01A` « past mid-late 1981 ». Les jeux à parole de Gosof vont de 1981
-à 1983.
-
-### Occupation finale
-
-| | valeur | dispo | |
-|---|---|---|---|
-| bascules | 2 702 | 11 440 | 23 % |
-| LUT | 4 326 | 5 720 | **75 %** |
-| blocs mémoire | 8 | 32 | 25 % |
-| fréquence max | **56,3 MHz** | besoin 50 | marge 6,3 |
-
-⚠️ Et la mise en garde de MAME reste entière : *« totally random guesswork; would
-like to get real measurements on a board »*. La formule est la meilleure référence
-publique, pas une mesure. Si vous avez une carte MA-216 d'origine, un
-fréquencemètre sur la broche d'horloge du SC-01 pendant une phrase vaudrait plus
-que tout ce qui précède — et ce serait une contribution à MAME.
+⚠️ **Couper le 43 V** pendant chaque configuration du FPGA : `HSWAPEN` étant à la
+masse, toutes les broches utilisateur sont tirées au HAUT, et les grilles des
+MOSFET de bobines sont actives au niveau haut. Ne jamais alimenter l'USB et P6 en
+même temps : même nœud +5 V, sans diode.

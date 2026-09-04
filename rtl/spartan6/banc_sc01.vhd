@@ -284,7 +284,8 @@ begin
 			clk        => clk_50,
 			gosof_u8   => voie_son,
 			speech_s18 => sc01_s18,
-			dac_u16    => melange
+			dac_u16    => melange,
+			sature     => open
 		);
 
 	Audio_DAC : entity work.dac

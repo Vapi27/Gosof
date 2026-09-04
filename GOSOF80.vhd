@@ -49,7 +49,12 @@ entity gosof80 is
 		-- les ecritures de la SD sont neutralisees, et le reset est relache par un
 		-- simple compteur. La SD sort du chemin critique. Le reste du circuit est
 		-- INCHANGE : meme decodage, meme processeur, meme chaine audio.
-		SANS_SD : boolean := false
+		SANS_SD : boolean := false;
+		-- TRACE : compte, en SIMULATION SEULEMENT, ce qu'aucun outil ne montre --
+		-- les ecritures de la page $3xxx (l'horloge du SC-01, que le jeu pilote),
+		-- les strobes de phoneme, et les cycles ou le melangeur ECRETE. La
+		-- synthese ignore report ; a false le processus ne fait rien du tout.
+		TRACE   : boolean := false
 	);
 	port(
 		clk_50	: in std_logic;
@@ -103,6 +108,7 @@ architecture rtl of gosof80 is
 	-- Ce que rend SD_Card. En mode normal c'est lui qui devient reset_l ; en
 	-- SANS_SD on le laisse tourner dans le vide et c'est le compteur qui decide.
 	signal reset_sd	: 	std_logic;
+	signal mix_sature	:	std_logic;
 	-- 2^16 cycles a 50 MHz = 1,31 ms. Genereux : il ne s'agit que de laisser
 	-- l'horloge processeur et le SC-01A sortir de leur propre initialisation,
 	-- pas d'attendre un transfert. (2^20 = 21 ms rendait toute simulation du
@@ -574,7 +580,8 @@ port map(
    clk        => clk_50,
    gosof_u8   => audio_dat,
    speech_s18 => sc01_audio,
-   dac_u16    => audio_mixe
+   dac_u16    => audio_mixe,
+   sature     => mix_sature
 );
 
 Audio_DAC : entity work.dac
@@ -623,6 +630,54 @@ assert (not SANS_SD) or JEU_PRESENT
 	     & "avec outils/rom_vers_vhdl.py et compilez ce fichier-la a la place de "
 	     & "rtl/spartan6/gosof_jeu_vide.vhd."
 	severity failure;
+
+-- ------------------------------------------------------------------------
+-- TRACE DE SIMULATION. Trois inconnues qu'aucune synthese ne peut lever :
+--   1. le jeu ECRIT-IL la page $3xxx ? Si oui, l'horloge du SC-01 est pilotee
+--      en cours de partie et la valeur par defaut x"A0" n'a plus d'importance.
+--      Si non, c'est ce defaut-la qui fixe le timbre de toute la machine.
+--   2. combien de phonemes le jeu strobe-t-il reellement ?
+--   3. le melangeur ECRETE-t-il ? La saturation est indispensable, mais on ne
+--      savait pas si elle etait atteinte -- donc si sa forme comptait.
+-- A TRACE=false ce processus est vide et la synthese l'ignore.
+Trace_Sim : process (clk_50)
+	variable n_horl, n_phon, n_sat, n_dac : integer := 0;
+	variable horl_vue : std_logic_vector(7 downto 0) := (others => 'U');
+	variable stb_prec : std_logic := '0';
+	-- PAS `ms` : ce nom masquerait l'unite de temps ms et la division
+	-- `now / 1 ms` cesserait de compiler. (Piege paye trois fois cette seance,
+	-- apres `ns` dans deux bancs de simulation.)
+	variable n_ms_prec : integer := -1;
+	variable n_ms      : integer;
+begin
+	if TRACE and rising_edge(clk_50) then
+		if dac_latch_speech = '1' then
+			n_horl := n_horl + 1;
+			if cpu_dout /= horl_vue then
+				horl_vue := cpu_dout;
+				report "TRACE $3xxx <= x""" & "" & integer'image(to_integer(unsigned(cpu_dout)))
+				     & """ (horloge SC-01) a " & time'image(now);
+			end if;
+		end if;
+		if dac_latch = '1'         then n_dac  := n_dac + 1;  end if;
+		if mix_sature = '1'        then n_sat  := n_sat + 1;  end if;
+		if sc01_strobe = '1' and stb_prec = '0' then n_phon := n_phon + 1; end if;
+		stb_prec := sc01_strobe;
+
+		-- un bilan par milliseconde : une trace evenement par evenement noierait
+		-- l'information sous des milliers de lignes.
+		n_ms := now / 1 ms;
+		if n_ms /= n_ms_prec then
+			n_ms_prec := n_ms;
+			if n_ms > 0 then
+				report "TRACE t=" & integer'image(n_ms) & "ms  ecritures DAC=" & integer'image(n_dac)
+				     & "  ecritures $3xxx=" & integer'image(n_horl)
+				     & "  phonemes=" & integer'image(n_phon)
+				     & "  cycles ecretes=" & integer'image(n_sat);
+			end if;
+		end if;
+	end if;
+end process;
 
 SD_CARD: entity work.SD_Card
 port map(	
