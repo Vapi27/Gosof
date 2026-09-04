@@ -157,6 +157,31 @@ Le chargement precedent pilotait **quatre** broches avec le meme signal
 positions vont a des fonctions inconnues : une sortie de la carte qui se bat
 contre la notre suffit. Une seule broche pilotee, et le reste en haute impedance.
 
+### La double parole, mesurée puis corrigée
+
+Chez bontango le SC01 est un leurre : la parole vient entièrement du module MP3,
+déclenché par `send_flag` quand `speech_ctrl` marque la commande comme parole. Une
+seule voix. En mettant un **vrai** SC-01A, une carte MA-216 se met à faire les
+deux : le cœur synthétise le phonème **et** le MP3 joue l'enregistrement. Sur
+Volcano, 18 commandes sur 31 sont marquées parole ; sur Black Hole, 13.
+
+Contrôle croisé en simulation, mêmes codes (3 et 4, marqués parole), seul le
+générique change :
+
+| | phonèmes au SC-01A | déclenchements MP3 |
+|---|---|---|
+| `PAROLE_MP3_AUSSI = false` (défaut) | 3 | **0** |
+| `PAROLE_MP3_AUSSI = true` (amont) | 3 | **2** |
+
+La voie parole réelle est intacte des deux côtés : le correctif ne supprime que le
+déclenchement du MP3, et uniquement là où `speech_en = '1'` — MA-216 seulement.
+Partout ailleurs le MP3 reste la seule source de parole, comportement inchangé.
+
+⚠️ Piège paye en chemin : le premier contrôle croisé utilisait les codes 1 et 2, qui
+sont justement dans la liste des **non-parole** de Volcano. Les deux configurations
+donnaient 0 et le test ne prouvait rien. Les codes parole de Volcano sont
+3, 4, 7, 10, 11, 12, 15, 18, 19, 20, 23, 24, 25, 26, 27, 29, 30, 31.
+
 ---
 
 ## 2. Ce qui a tourné en simulation

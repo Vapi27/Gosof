@@ -50,6 +50,11 @@ entity gosof80 is
 		-- simple compteur. La SD sort du chemin critique. Le reste du circuit est
 		-- INCHANGE : meme decodage, meme processeur, meme chaine audio.
 		SANS_SD : boolean := false;
+		-- PAROLE_MP3_AUSSI : laisser le module MP3 parler MEME quand le vrai
+		-- SC-01A parle. Faux par defaut, et c'est un CHANGEMENT DE COMPORTEMENT
+		-- assume par rapport au Gosof d'origine -- voir le commentaire sur
+		-- send_flag. A true, on retrouve exactement l'amont.
+		PAROLE_MP3_AUSSI : boolean := false;
 		-- TRACE : compte, en SIMULATION SEULEMENT, ce qu'aucun outil ne montre --
 		-- les ecritures de la page $3xxx (l'horloge du SC-01, que le jeu pilote),
 		-- les strobes de phoneme, et les cycles ou le melangeur ECRETE. La
@@ -121,6 +126,7 @@ architecture rtl of gosof80 is
 		if b then return '1'; else return '0'; end if;
 	end function;
 	constant SD_ECRIT : std_logic := bool_vers_sl(not SANS_SD);
+	constant MP3_AUSSI : std_logic := bool_vers_sl(PAROLE_MP3_AUSSI);
 
 	signal Sound_meta : 	std_logic_vector(4 downto 0);
 	signal cpu_addr	:	std_logic_vector(15 downto 0);
@@ -463,8 +469,30 @@ DFcmd_par2 <=  bg_DFcmd_par2 when ( SB_type = is_MA55 or SB_type = is_SYS1 ) els
 -- le defaut. (Meme piege exactement que la borne d'horloge de sc01_glue.vhd:86.)
 speech_idx <= to_integer(unsigned(Sound_meta)) when unsigned(Sound_meta) >= 1 else 1;
 
+-- LA DOUBLE PAROLE, ET POURQUOI ELLE APPARAIT MAINTENANT.
+--
+-- Chez bontango, le SC01 est un LEURRE : il ne sort aucun son (Votrax-SC01.vhd:15,
+-- « only a simulation of signaling to fool the program »). La parole vient donc
+-- entierement du module MP3, declenche par send_flag quand speech_ctrl marque la
+-- commande de son comme « parole ». C'est coherent : une seule voix.
+--
+-- Ce portage met un VRAI SC-01A a la place du leurre. Sur une carte MA-216, le
+-- jeu ecrit un phoneme en $2xxx -- le coeur le synthetise -- ET send_flag monte,
+-- parce que la meme commande est marquee parole. DEUX voix disent la meme phrase
+-- en meme temps. Sur Volcano c'est 18 commandes sur 31 ; sur Black Hole 13.
+--
+-- On ferme donc la voie MP3 la ou le vrai chip parle, c'est-a-dire exactement la
+-- ou speech_en vaut '1' (MA-216 seulement, :222). Partout ailleurs -- MA-309,
+-- MA-55, MA-490, SYS1 -- speech_en vaut '0', le terme ajoute vaut '1', et le
+-- comportement est INCHANGE : le MP3 y reste la seule source de parole.
+--
+-- PAROLE_MP3_AUSSI = true retablit l'amont a l'identique. Le generique existe
+-- parce que c'est le programme de Ralf : le choix doit rester reversible, et se
+-- voir.
 send_flag <= bg_send_flag when ( SB_type = is_MA55 or SB_type = is_SYS1 ) else
-				 ( Sound_meta(0) or Sound_meta(1) or Sound_meta(2) or Sound_meta(3)) and not speech_ctrl(speech_idx);
+				 ( Sound_meta(0) or Sound_meta(1) or Sound_meta(2) or Sound_meta(3))
+				 and not speech_ctrl(speech_idx)
+				 and ( MP3_AUSSI or not speech_en );
 
 				
 				
@@ -641,7 +669,8 @@ assert (not SANS_SD) or JEU_PRESENT
 --      savait pas si elle etait atteinte -- donc si sa forme comptait.
 -- A TRACE=false ce processus est vide et la synthese l'ignore.
 Trace_Sim : process (clk_50)
-	variable n_horl, n_phon, n_sat, n_dac : integer := 0;
+	variable n_horl, n_phon, n_sat, n_dac, n_mp3 : integer := 0;
+	variable mp3_prec : std_logic := '0';
 	variable horl_vue : std_logic_vector(7 downto 0) := (others => 'U');
 	variable stb_prec : std_logic := '0';
 	-- PAS `ms` : ce nom masquerait l'unite de temps ms et la division
@@ -663,6 +692,8 @@ begin
 		if mix_sature = '1'        then n_sat  := n_sat + 1;  end if;
 		if sc01_strobe = '1' and stb_prec = '0' then n_phon := n_phon + 1; end if;
 		stb_prec := sc01_strobe;
+		if send_flag = '1' and mp3_prec = '0' then n_mp3 := n_mp3 + 1; end if;
+		mp3_prec := send_flag;
 
 		-- un bilan par milliseconde : une trace evenement par evenement noierait
 		-- l'information sous des milliers de lignes.
@@ -673,7 +704,8 @@ begin
 				report "TRACE t=" & integer'image(n_ms) & "ms  ecritures DAC=" & integer'image(n_dac)
 				     & "  ecritures $3xxx=" & integer'image(n_horl)
 				     & "  phonemes=" & integer'image(n_phon)
-				     & "  cycles ecretes=" & integer'image(n_sat);
+				     & "  cycles ecretes=" & integer'image(n_sat)
+				     & "  declenchements MP3=" & integer'image(n_mp3);
 			end if;
 		end if;
 	end if;

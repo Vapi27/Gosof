@@ -38,7 +38,9 @@ entity tb_gosof80 is
 		DUREE_US : integer := 4000;
 		-- Le reset interne se relache a 2^16 cycles = 1,31 ms.
 		DEBUT_US : integer := 2000;
-		REPOS_US : integer := 1000
+		REPOS_US : integer := 1000;
+		-- pour le controle croise de la double parole
+		MP3_AUSSI : boolean := false
 	);
 end tb_gosof80;
 
@@ -58,7 +60,7 @@ begin
 	end generate;
 
 	dut : entity work.gosof80
-		generic map (SANS_SD => true, TRACE => true)
+		generic map (SANS_SD => true, TRACE => true, PAROLE_MP3_AUSSI => MP3_AUSSI)
 		port map (
 			clk_50 => clk, reset_sw => '1', test => '1',
 			Audio_O => audio_o, Sound => son,
