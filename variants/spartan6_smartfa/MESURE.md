@@ -215,6 +215,45 @@ remplaçant une carte son **version export** par la version à parole, il faut
 changer la ROM du MPU — les versions export ne savent jouer que 15 sons, la carte
 à parole jusqu'à 31.
 
+### Le tirage des lignes de son : trois essais sur la carte
+
+Une sortie d'ULN2803 est à **collecteur ouvert** : elle ne sait que tirer vers le
+bas. Les deux tirages ont été essayés sur le matériel, et c'est la paire de
+résultats qui établit la réponse — aucun des deux seul ne suffisait.
+
+| tirage | repos sur banc | commandes |
+|---|---|---|
+| `PULLUP` | **11111** = commande 31 en permanence → parle en boucle | passent |
+| aucun | flottant, bruit → commandes au hasard | aléatoires |
+| `PULLDOWN` | **silencieux** ✅ | **ne passent plus** ❌ |
+
+Les deux comportements attendus — repos **bas** et commandes qui **montent** — ne
+peuvent venir que d'une seule configuration : les Darlington **conduisent au
+repos**, ce qui tire la ligne au bas fortement ; une commande en bloque un, et
+c'est le `PULLUP` qui fait monter la ligne. C'est ce que fait la machine, où le
+MPU tient les entrées de l'ULN au haut. **Le firmware de production porte donc
+`PULLUP`.**
+
+Conséquence sur banc, et ce n'est pas un défaut : sans MPU, aucun Darlington ne
+conduit et la carte parle en boucle. Pour un banc silencieux, `SON_INTERNE` ignore
+ces cinq broches.
+
+⚠️ **Reste inexpliqué** : la Gosof d'origine est silencieuse au repos sur banc.
+Cela suppose que ses Darlington conduisent, donc que le réseau `R6` tient les
+entrées de l'ULN au haut — ce qui ne se produit pas sur ce montage. La différence
+est côté porteuse (`R6`, ou son +5 V), pas côté FPGA. Une pointe sur une entrée de
+l'ULN au repos le dirait en dix secondes.
+
+### U5 gravée
+
+Le firmware de production est en flash de configuration : la carte démarre seule
+sur Gosof, sans chargement. Gravure par le pont JTAG→SPI en **5,6 s**
+(`PSTORE OK u5`, image `promgen` de 341 160 octets), sous `caffeinate` — une mise
+en veille du Mac en pleine écriture laisserait la flash à moitié écrite.
+
+Pour revenir à GottFA80, il faut regraver U5 avec son image ; le portage Gosof ne
+s'efface pas en coupant l'alimentation.
+
 ---
 
 ## 2. Ce qui a tourné en simulation
