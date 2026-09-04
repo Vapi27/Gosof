@@ -106,7 +106,17 @@ begin
 		port map (
 			clk         => clk,
 			reset_n     => reset_n,
-			p           => cpu_data(5 downto 0),
+			-- ⚠️ LE BUS EST INVERSE, ET C'EST MESURE. Sur la MA-216 les six lignes de
+			--    donnee vers le SC-01 passent par des inverseurs : le ROM Gottlieb
+			--    ecrit chaque code EOR #$3F ($FB7A/$F293 de Volcano), et ecrit $00 au
+			--    boot ($F023) POUR OBTENIR STOP ($3F). Simulation, Volcano, poussoir
+			--    Test tenu : strobe #1 = octet 0 -> brut EH3 / inverse STOP ; strobe #2
+			--    = octet $15 -> brut AH1 / inverse T (« TEST »). Sans le `not`, chaque
+			--    phoneme est un autre, « T » devient « AH », et le STOP de fin de phrase
+			--    devient EH3 -- une voyelle que la puce tient a l'infini. C'etait le
+			--    « AAAH permanent » entendu sur la carte, et le charabia de la parole.
+			--    Les deux bits d'inflexion (7..6) ne sont pas concernes (INFLECTION_SRC).
+			p           => not cpu_data(5 downto 0),
 			inflection  => inflexion,
 			stb         => stb_coeur,
 			ar          => ar_coeur,

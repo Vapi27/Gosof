@@ -678,6 +678,32 @@ Trace_Sim : process (clk_50)
 	-- apres `ns` dans deux bancs de simulation.)
 	variable n_ms_prec : integer := -1;
 	variable n_ms      : integer;
+		-- Le nom du phonème SC-01 pour un code de 6 bits (table du constructeur).
+		-- Sert à VERIFIER la polarité du bus : le ROM Gottlieb écrit ses codes
+		-- EOR #$3F, donc UNE des deux colonnes (brut / inversé) doit épeler de
+		-- l'anglais, et l'autre du charabia.
+		function nom_phon(c : integer) return string is
+		begin
+			case c is
+				when 0 => return "EH3"; when 1 => return "EH2"; when 2 => return "EH1"; when 3 => return "PA0";
+				when 4 => return "DT"; when 5 => return "A1"; when 6 => return "A2"; when 7 => return "ZH";
+				when 8 => return "AH2"; when 9 => return "I3"; when 10 => return "I2"; when 11 => return "I1";
+				when 12 => return "M"; when 13 => return "N"; when 14 => return "B"; when 15 => return "V";
+				when 16 => return "CH"; when 17 => return "SH"; when 18 => return "Z"; when 19 => return "AW1";
+				when 20 => return "NG"; when 21 => return "AH1"; when 22 => return "OO1"; when 23 => return "OO";
+				when 24 => return "L"; when 25 => return "K"; when 26 => return "J"; when 27 => return "H";
+				when 28 => return "G"; when 29 => return "F"; when 30 => return "D"; when 31 => return "S";
+				when 32 => return "A"; when 33 => return "AY"; when 34 => return "Y1"; when 35 => return "UH3";
+				when 36 => return "AH"; when 37 => return "P"; when 38 => return "O"; when 39 => return "I";
+				when 40 => return "U"; when 41 => return "Y"; when 42 => return "T"; when 43 => return "R";
+				when 44 => return "E"; when 45 => return "W"; when 46 => return "AE"; when 47 => return "AE1";
+				when 48 => return "AW2"; when 49 => return "UH2"; when 50 => return "UH1"; when 51 => return "UH";
+				when 52 => return "O2"; when 53 => return "O1"; when 54 => return "IU"; when 55 => return "U1";
+				when 56 => return "THV"; when 57 => return "TH"; when 58 => return "ER"; when 59 => return "EH";
+				when 60 => return "E1"; when 61 => return "AW"; when 62 => return "PA1"; when 63 => return "STOP";
+				when others => return "?";
+			end case;
+		end function;
 begin
 	if TRACE and rising_edge(clk_50) then
 		if dac_latch_speech = '1' then
@@ -690,7 +716,13 @@ begin
 		end if;
 		if dac_latch = '1'         then n_dac  := n_dac + 1;  end if;
 		if mix_sature = '1'        then n_sat  := n_sat + 1;  end if;
-		if sc01_strobe = '1' and stb_prec = '0' then n_phon := n_phon + 1; end if;
+		if sc01_strobe = '1' and stb_prec = '0' then
+			n_phon := n_phon + 1;
+			report "TRACE PHONEME #" & integer'image(n_phon) & " octet=" & integer'image(to_integer(unsigned(cpu_dout)))
+			     & "  brut=" & nom_phon(to_integer(unsigned(cpu_dout(5 downto 0))))
+			     & "  inverse=" & nom_phon(63 - to_integer(unsigned(cpu_dout(5 downto 0))))
+			     & "  a " & time'image(now);
+		end if;
 		stb_prec := sc01_strobe;
 		if send_flag = '1' and mp3_prec = '0' then n_mp3 := n_mp3 + 1; end if;
 		mp3_prec := send_flag;
