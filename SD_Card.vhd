@@ -167,10 +167,23 @@ SD_CARD_READ: entity work.SPI_Master --read i byte by byte (slooow)
 				 when Startdelay => 
 						active_master <= "01";			
 					--give SD card time to power up					
-					counter <= counter +1;					
+					-- PORTABILITE : on n'incremente QUE si on n'est pas deja au bout.
+					-- counter est declare `integer range 0 to 5000000` et l'increment
+					-- s'executait AVANT le test : au cycle ou il vaut 5000000,
+					-- l'assignation tente 5000001. GHDL verifie la plage a l'execution
+					-- de l'assignation, avant que le `counter <= 0` du if ne l'ecrase --
+					-- et la simulation meurt a EXACTEMENT 100 ms, dans toutes les
+					-- configurations. En synthese le compteur boucle, c'est inoffensif.
+					-- C'est pour cela que gosof80 n'avait jamais pu etre simule au-dela.
+					--
+					-- La correction est NEUTRE : l'etat change toujours quand le compteur
+					-- atteint 5000000, au meme cycle qu'avant. Defaut PRISTINE, identique
+					-- dans origin/main:SD_Card.vhd. A signaler a bontango.
 					if ( counter = 5000000 ) then --100ms 
 						state_A <= send_read_request;
 						counter <= 0;						
+					else
+						counter <= counter +1;					
 					end if;																													
 				when send_read_request =>						
 				   case cmd_count is

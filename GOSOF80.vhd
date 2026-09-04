@@ -655,8 +655,8 @@ begin
 			n_horl := n_horl + 1;
 			if cpu_dout /= horl_vue then
 				horl_vue := cpu_dout;
-				report "TRACE $3xxx <= x""" & "" & integer'image(to_integer(unsigned(cpu_dout)))
-				     & """ (horloge SC-01) a " & time'image(now);
+				report "TRACE $3xxx <= " & integer'image(to_integer(unsigned(cpu_dout)))
+				     & " decimal (octet d'horloge SC-01) a " & time'image(now);
 			end if;
 		end if;
 		if dac_latch = '1'         then n_dac  := n_dac + 1;  end if;
