@@ -1,0 +1,148 @@
+#==============================================================================
+# gosof_v230.ucf — GOSOF COMPLET sur porteuse GOSOF 2.30 de bontango.
+#
+# Composant : XC6SLX9-2TQG144C, module Pstore Smart FA V1.0
+# Porteuse  : GOSOF 2.30, prevue pour un "EP2C5T144C8 dev Board" (Cyclone II)
+#
+# LA REGLE DE CORRESPONDANCE, etablie et auto-testee :
+#   numero de pastille serigraphie sur la Gosof (1..112, continu)
+#     1-28 -> P4.N   29-56 -> P1.N-28   57-84 -> P2.N-56   85-112 -> P3.N-84
+#   puis position -> broche Spartan-6 par gottfa-hw/pinout/GottFA80_SLX9.ucf.
+#
+# ⚠️ NE JAMAIS PASSER PAR LES NOMS « PIN_nn ». CONNECTORS_MAP.md associe des
+#    positions a des PIN_nn de la devboard Cyclone 10 ; la Gosof porte un Cyclone
+#    II, ou le meme nom designe une autre position. C'est ce qui a donne P56 au
+#    lieu de P67 pour l'audio. Les LOC de GottFA80_SLX9.ucf sont exactes -- ce
+#    sont ses NOMS DE SIGNAUX qu'il ne faut pas reprendre.
+#
+# CE QUI EST MESURE, ET CE QUI NE L'EST PAS :
+#   - P4.24 -> P67 (l'audio) est MESURE : cuivre du PCB, tracage vectoriel du
+#     schema, et un analyseur sur la carte. C'est le seul point mesure.
+#   - P2 et P3 reposent sur la serigraphie « P1..P4 » de bontango, sur la
+#     signature asymetrique des alimentations (25/26 positions concordantes) et
+#     sur 18 broches identiques entre les deux cartes filles.
+#   - P1 ne porte RIEN : 28/28 <nc>, aucune piste au PCB. Gosof est une carte son,
+#     elle n'a pas d'afficheur.
+#
+# ⚠️ LES 22 PULLUP NE SONT PAS DU CONFORT, C'EST LE CIRCUIT. Les 17 poles de DIP
+#    et le poussoir vont a la masse SANS aucune resistance de rappel sur la carte
+#    (elle ne porte que R1..R8, toutes ailleurs, et aucun reseau). Sans le tirage
+#    interne du FPGA, RIEN ne produit le '1' : la carte lirait des DIP au hasard
+#    et n'entendrait jamais un code de son.
+#
+# ⚠️ UN PORT UTILISE SANS « LOC » EST PLACE OU PAR VEUT -- y compris sur une
+#    pastille de DIP vers la masse. « Un .ucf incomplet est sans danger » n'est
+#    vrai que pour une broche INUTILISEE, que bitgen tire au bas. Donc : ou bien
+#    on contraint, ou bien on retire le port du sommet. Jamais entre les deux.
+#
+# ⚠️ VINGT-TROIS POSITIONS VONT A LA MASSE et ne doivent JAMAIS etre une sortie :
+#    17 poles de DIP, le poussoir S4, et 5 sorties collecteur ouvert de l'ULN2803.
+#    Une sortie FPGA a '1' en face d'un interrupteur ferme ou d'un Darlington
+#    sature est un court-circuit franc.
+#
+# ⚠️ SECURITE, mot pour mot de provision/usb_install.py:15-18 :
+#    /!\ COUPER LE 43 V pendant toute la procedure : pendant chaque configuration
+#        du FPGA, HSWAPEN etant a la masse, TOUTES les broches utilisateur sont
+#        tirees au HAUT, et les grilles des MOSFET de bobines sont actives au
+#        niveau haut.
+#    /!\ NE JAMAIS alimenter l USB et P6 en meme temps : meme noeud +5 V, sans
+#        diode.
+#    Ici HSWAPEN a la masse joue EN NOTRE FAVEUR : pendant la configuration SD_CS
+#    monte (carte SD deselectionnee), dfp_tx monte (UART au repos), DIP et ULN
+#    tires au haut sans consequence. NE PAS le changer.
+#==============================================================================
+
+CONFIG VCCAUX = "3.3";
+NET "clk_50" TNM_NET = TNM_clk50;
+TIMESPEC TS_clk50 = PERIOD "TNM_clk50" 20 ns HIGH 50%;
+
+# --- INTERDICTION EXPLICITE -------------------------------------------------
+# P139 = position P2.24 = le TX du module MP3, qui emet en PUSH-PULL. Aucun port
+# de gosof80 ne l'occupe : c'est donc le seul site ou PAR pourrait poser une
+# sortie contre une sortie. On le lui interdit.
+CONFIG PROHIBIT = "P139";
+
+# --- horloge ----------------------------------------------------------------
+NET "clk_50"      LOC = "P51"  | IOSTANDARD = LVCMOS33;   # oscillateur Y2 du module
+
+# --- audio : LE SEUL POINT MESURE -------------------------------------------
+NET "audio"       LOC = "P67"  | IOSTANDARD = LVCMOS33 | DRIVE = 12 | SLEW = SLOW;
+#   pastille 24 -> P4.24 -> P67 (GottFA80_SLX9.ucf, IO_L2P_CMPCLK_2, banque 2).
+#   Vers R4 3,3K, C8 4,7nF, potentiometre R5, C7, ampli TDA7267, haut-parleur.
+
+# --- les cinq fils du MPU, derriere l'ULN2803 -------------------------------
+# L'ULN2803 INVERSE deja : d'ou riot_pa_i(n) <= Sound_meta(n) sans `not` dans
+# gosof80. Ses sorties sont a COLLECTEUR OUVERT : jamais de sortie FPGA ici.
+NET "sound<0>"    LOC = "P118" | IOSTANDARD = LVCMOS33 | PULLUP;   # P2.10, S1
+NET "sound<1>"    LOC = "P119" | IOSTANDARD = LVCMOS33 | PULLUP;   # P2.11, S2
+NET "sound<2>"    LOC = "P126" | IOSTANDARD = LVCMOS33 | PULLUP;   # P2.16, S4
+NET "sound<3>"    LOC = "P131" | IOSTANDARD = LVCMOS33 | PULLUP;   # P2.18, S8
+NET "sound<4>"    LOC = "P132" | IOSTANDARD = LVCMOS33 | PULLUP;   # P2.19, S16
+
+# --- S1 « Soundcard CFG » : les six options de carte son --------------------
+NET "sb_opt<1>"   LOC = "P6"   | IOSTANDARD = LVCMOS33 | PULLUP;   # P3.6
+NET "sb_opt<2>"   LOC = "P2"   | IOSTANDARD = LVCMOS33 | PULLUP;   # P3.4
+NET "sb_opt<3>"   LOC = "P1"   | IOSTANDARD = LVCMOS33 | PULLUP;   # P3.3
+NET "sb_opt<4>"   LOC = "P138" | IOSTANDARD = LVCMOS33 | PULLUP;   # P2.23
+NET "sb_opt<5>"   LOC = "P5"   | IOSTANDARD = LVCMOS33 | PULLUP;   # P3.5
+NET "sb_opt<6>"   LOC = "P127" | IOSTANDARD = LVCMOS33 | PULLUP;   # P2.17
+#   sb_opt<6> est corrobore par bontango lui-meme : GOSOF80.vhd:24 note
+#   « sb_opt(6) was on wrong IO (PIN_51 instead of PIN_93) », et le schema met
+#   bien S1_DIP6 sur PIN93. Une source qui n'est ni le PDF ni la mesure.
+
+# --- S3 « Game Selection » : le numero de jeu -------------------------------
+# ⚠️ Les POSITIONS sont sures, l'ORDRE DES BITS ne l'est pas : le schema ne
+#    numerote pas les bits. game_sel<0> = S2_DIP1 est le choix naturel, PAS
+#    prouve. Sans consequence electrique -- tout est entree -- mais une
+#    permutation choisit un autre jeu et un autre type de carte son
+#    (game_sel(5 downto 3) fixe SB_type). Se verifie en posant Volcano = 111110
+#    et en ecoutant si c'est bien Volcano qui demarre.
+NET "game_sel<0>" LOC = "P22"  | IOSTANDARD = LVCMOS33 | PULLUP;   # P3.18
+NET "game_sel<1>" LOC = "P21"  | IOSTANDARD = LVCMOS33 | PULLUP;   # P3.17
+NET "game_sel<2>" LOC = "P14"  | IOSTANDARD = LVCMOS33 | PULLUP;   # P3.13
+NET "game_sel<3>" LOC = "P12"  | IOSTANDARD = LVCMOS33 | PULLUP;   # P3.12
+NET "game_sel<4>" LOC = "P11"  | IOSTANDARD = LVCMOS33 | PULLUP;   # P3.11
+NET "game_sel<5>" LOC = "P10"  | IOSTANDARD = LVCMOS33 | PULLUP;   # P3.10
+
+# --- S2 « clock adjustment » : les quatre options ---------------------------
+# Meme reserve sur l'ordre des bits. option(3)='0' force le jeu 0 (GOSOF80:527).
+NET "option<0>"   LOC = "P8"   | IOSTANDARD = LVCMOS33 | PULLUP;   # P3.8
+NET "option<1>"   LOC = "P7"   | IOSTANDARD = LVCMOS33 | PULLUP;   # P3.7
+NET "option<2>"   LOC = "P23"  | IOSTANDARD = LVCMOS33 | PULLUP;   # P3.19
+NET "option<3>"   LOC = "P24"  | IOSTANDARD = LVCMOS33 | PULLUP;   # P3.20
+
+# --- poussoir Test (S4), actif bas -----------------------------------------
+NET "test_sw"     LOC = "P137" | IOSTANDARD = LVCMOS33 | PULLUP;   # P2.22
+
+# --- carte SD (TF-01A) ------------------------------------------------------
+NET "sd_cs"       LOC = "P41"  | IOSTANDARD = LVCMOS33;            # P4.4
+NET "sd_clk"      LOC = "P56"  | IOSTANDARD = LVCMOS33;            # P4.15
+NET "sd_mosi"     LOC = "P57"  | IOSTANDARD = LVCMOS33;            # P4.16
+NET "sd_miso"     LOC = "P61"  | IOSTANDARD = LVCMOS33 | PULLUP;   # P4.21
+#   ⚠️ sd_miso est le DO de la carte SD, une sortie PUSH-PULL. JAMAIS en sortie
+#      cote FPGA. Deriver ce fichier par renommage depuis GottFA80_SLX9.ucf y
+#      laisserait « CS_EEprom », qui est une SORTIE : conflit franc a chaque
+#      octet lu. Le PULLUP tient la ligne entre deux transferts, ou personne ne
+#      la pilote ; il perd de toute facon contre la sortie de la carte.
+
+# --- module MP3 : on ne cable que notre emission ---------------------------
+NET "dfp_tx"      LOC = "P133" | IOSTANDARD = LVCMOS33;            # P2.20 -> RX du module
+
+# --- temoins ----------------------------------------------------------------
+NET "led_0"       LOC = "P62"  | IOSTANDARD = LVCMOS33;            # P4.22, D5 « SD Error »
+#   Cathode cote FPGA, donc ACTIF BAS -- et SD_Card.vhd le declare deja ainsi.
+NET "led_1"       LOC = "P26"  | IOSTANDARD = LVCMOS33;            # P3.21, D1
+NET "led_2"       LOC = "P27"  | IOSTANDARD = LVCMOS33;            # P3.22, D2
+#   ⚠️ L'attribution D1<->led_1 n'est PAS prouvee : contrairement a D5, le schema
+#      ne porte aucune legende de fonction. Sans risque electrique. Se tranche en
+#      allumant P26 seule puis P27 seule.
+
+# --- CE QUI N'EST VOLONTAIREMENT PAS CONTRAINT ------------------------------
+# reset_sw : AUCUNE source sur cette porteuse (112 broches verifiees). Retire du
+#            sommet et cable a '1' -- pas laisse sans LOC, ce qui le ferait
+#            placer n'importe ou. A '0' il bloquerait SD_Card et le 6502 ne
+#            demarrerait JAMAIS, en silence.
+# DFP_Busy : port declare mais rien ne le lit ; XST le supprime. Cable a '1'.
+# P1 entier (P74..P105) : 28/28 <nc> cote Gosof, aucune piste au PCB.
+# P4.19 / P4.20 (VCC1.2) : <nc> cote Gosof, et ce que le module en fait n'a pas
+#            ete lu. On n'y pose rien.

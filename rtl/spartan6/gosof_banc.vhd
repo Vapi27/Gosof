@@ -49,21 +49,24 @@ entity gosof_banc is
 		clk_50 : in  std_logic;                     -- P51, oscillateur Y2
 		-- DEUX BROCHES, C'EST TOUT.
 		--
-		-- L'AUDIO va sur P56 = position P4.15. Chaine etablie sur la carte Gosof :
-		--     Gosof PIN_31  ->  P4.15  ->  Spartan-6 P56
-		-- (CONNECTORS_MAP.md:129, puis GottFA80_SLX9.ucf:154). Dans le brochage
-		-- GottFA80 cette position s'appelle « CS_SDcard » : sur une porteuse Gosof
-		-- elle porte l'audio. Le nom du contrat ne dit rien de la carte d'accueil.
+		-- L'AUDIO va sur P67 = position P4.24. MESUREE, pas deduite : tracage du
+		-- cuivre du PCB (R4 -> trois noeuds -> via -> pastille 24) ET analyseur sur
+		-- la carte (880 Hz retrouve sur R4).
+		--
+		-- ⚠️ Une version precedente de ce commentaire annoncait P56 = P4.15, via
+		--    CONNECTORS_MAP.md:129. C'etait FAUX : cette table decrit la devboard
+		--    Cyclone 10 de bontango, alors que la porteuse Gosof porte un Cyclone
+		--    II, ou le nom PIN_nn ne designe pas la meme position. Ne jamais
+		--    retraduire une broche Gosof par cette table.
 		--
 		-- La carte Gosof porte DEJA le filtre : R4 3,3K + C8 4,7nF vers la masse,
-		-- puis un potentiometre R5 20K, C7 100nF, et l'ampli TDA7267. C'est
-		-- exactement le RC que dac.vhd:9-16 reclame. Rien a cabler.
+		-- potentiometre R5 20K, C7 100nF, ampli TDA7267. C'est exactement le RC que
+		-- dac.vhd:9-16 reclame. Rien a cabler.
 		--
-		-- PAS DE BROCHE DE RESET. reset_sw etait cable sur P3.25, dont la fonction
-		-- sur une porteuse Gosof est inconnue : si elle y est tiree au bas, le
-		-- design restait en reset pour toujours, sans que rien ne le dise. Le reset
-		-- de mise sous tension de gosof80 (SANS_SD) suffit.
-		audio  : out std_logic                      -- P56 = P4.15
+		-- PAS DE BROCHE DE RESET : aucune source n'existe sur cette porteuse, les
+		-- 112 broches ont ete verifiees. A '0' elle bloquerait SD_Card et le 6502
+		-- ne demarrerait jamais, en silence. Le reset de mise sous tension suffit.
+		audio  : out std_logic                      -- P67 = position P4.24
 	);
 end gosof_banc;
 

@@ -42,7 +42,7 @@ NET "clk_50" LOC = "P51" | IOSTANDARD = LVCMOS33;
 #   GottFA80_SLX9.ucf:169 — oscillateur Y2 du module, 50 MHz.
 
 NET "audio"  LOC = "P67" | IOSTANDARD = LVCMOS33 | DRIVE = 12 | SLEW = SLOW;
-#   GottFA80_SLX9.ucf:171 — position P4.24, IO_L2P_CMPCLK_2 (banque 2).
+#   GottFA80_SLX9.ucf:161 — position P4.24, IO_L2P_CMPCLK_2 (banque 2).
 #
 #   UNE SEULE BROCHE PILOTEE, a dessein. Le chargement precedent en pilotait
 #   QUATRE avec le meme signal (P40/P43/P44/P45) et rien ne s'est entendu. Sur une
