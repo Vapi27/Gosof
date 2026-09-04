@@ -257,6 +257,55 @@ la carte (désassemblage de Mars et Volcano, ROMs dans `~/gosof-roms`, hors dép
   « speech off » du commentaire de bontango ; non vérifié. **S2 DIP4** ON : la SD
   lit toujours le secteur 660, c'est-à-dire Mars quel que soit S3.
 
+### 🏆 LA PAROLE EST INTELLIGIBLE : le bus du SC-01 était inversé
+
+**Entendu sur la carte le 2026-09-04**, module Smart FA sur porteuse GOSOF 2.30,
+bitstream SANS_SD (Volcano dans le bitstream), poussoir **S4 « Test »** enfoncé :
+
+> « **TEST … TURN ALL SWITCHES OFF** »
+
+De l'anglais reconnaissable, dit par un SC-01A synthétisé, piloté par le ROM
+Gottlieb d'origine. C'est la première parole **intelligible** du portage, et elle
+prouve d'un coup : le 6502 exécute, la ROM est juste, le strobe et l'A/R sont
+bons, la chaîne DDS → filtres → mélangeur → delta-sigma → RC → TDA7267 est bonne.
+
+**La cause, trouvée par contrôle croisé en simulation** (`sim/tb_gosof80.vhd`,
+générique `TEST_0`, trace de phonèmes ajoutée à `Trace_Sim`). Les quatre phonèmes
+strobés par la routine de test `$FA49` de Volcano, décodés des deux façons :
+
+| octet écrit | lu **brut** | lu **inversé** |
+|---|---|---|
+| `$00` | **EH3** — voyelle tenue sans fin | **STOP** |
+| 21 | AH1 | **T** |
+| 4 | DT | **EH** |
+| 32 | A | **S** |
+
+La colonne inversée épelle « **T EH S (T)** » — la phrase `$FCBC` du ROM, mot pour
+mot. La brute est du charabia : c'est ce qu'on entendait. Le ROM écrit ses codes
+**déjà inversés** (`LDA (ptr),Y / EOR #$3F / STA $2000`, fin testée par
+`CMP #$C0` = `$FF` inversé) parce que la MA-216 porte des inverseurs devant
+P0..P5. L'octet `$00` écrit au reset (`$F024`, A=0) vaut donc **STOP** — mais lu
+brut c'est **EH3, une voyelle que la puce tient à l'infini** : le « AAAH »
+permanent. **Une cause, les deux symptômes.**
+
+Correctif : `p => not cpu_data(5 downto 0)` dans `rtl/spartan6/sc01_glue.vhd`.
+Les deux bits d'inflexion restent hors de l'inversion (un hexinverseur ne porte
+que six lignes, et `INFLECTION_SRC` vaut 0).
+
+⚠️ **Quatrième défaut de la base pristine** : bontango écrit lui aussi
+`cpu_data => cpu_dout(5 downto 0)` (`GOSOF80.vhd:186` d'origine). Son leurre ne
+produit aucun son — il ne s'en sert que pour choisir une durée — donc l'erreur
+était **inaudible** chez lui, mais elle fausse déjà ses durées de phonème.
+
+### Le self-test du ROM, outil de diagnostic gratuit
+
+`outils/dis6502.py` a établi que **S4 maintenu** fait entrer le ROM Gottlieb dans
+sa routine de test (`$FA5B` Mars, `$FA49` Volcano) : « TEST », test RAM
+(« RAM TEST FAILS »), **somme des deux ROM** (« EPROM ONE FAILS » /
+« EPROM TWO FAILS »), « TURN DIP SWITCHES OFF », « THANK YOU », bips, « TEST
+COMPLETE ». C'est le moyen de vérifier **la ROM chargée depuis la carte SD** sans
+aucun firmware spécial — le chemin SD n'a jamais été prouvé autrement.
+
 ### U5 gravée
 
 Le firmware de production est en flash de configuration : la carte démarre seule
