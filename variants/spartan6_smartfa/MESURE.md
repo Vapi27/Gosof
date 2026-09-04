@@ -57,6 +57,31 @@ distribuée a **échoué au placement** : `ERROR:Place:543`. Une ROM distribuée
 n'occupe que des slices SLICEM, minoritaires sur le LX9 ; 4096 × 18 bits n'y
 tiennent pas. Ce n'était pas une question de patience.
 
+## 1 bis. Gosof COMPLET, placé-routé
+
+Premier place-and-route du sommet, sur `gosof_banc` — `gosof80` entier, ROM Volcano
+dans le bitstream, séquenceur de codes de son interne.
+
+| | synthèse seule | **après placement** |
+|---|---|---|
+| LUT | 4 326 (75 %) | **2 968 / 5 720 — 51 %** |
+| bascules | 2 702 | 2 460 / 11 440 — 21 % |
+| slices occupées | *non mesurable* | **1 022 / 1 430 — 71 %** |
+| blocs 18 K | 8 | 6 / 32 |
+| blocs 9 K | *non mesurable* | 4 / 64, **aucun en SDP** |
+| DSP48A1 | *non mesurable* | **16 / 16 — 100 %** |
+| timing | 56,3 MHz estimé | **Timing Score 0**, « All constraints were met » |
+
+Deux enseignements que la synthèse ne pouvait pas donner :
+
+**Elle était pessimiste de 24 points** sur les LUT — 75 % annoncés contre 51 %
+réels. Engager une décision sur un chiffre de synthèse, dans un sens comme dans
+l'autre, n'a pas de sens.
+
+**Les 16 multiplicateurs sont tous pris.** C'est la vraie contrainte du design, et
+elle n'apparaît nulle part avant le placement. Toute fonction ajoutée qui
+multiplie devra se replier sur des LUT.
+
 ---
 
 ## 2. Ce qui a tourné en simulation
@@ -102,13 +127,11 @@ La branche de saturation reste non exercée.
 
 À lire avant d'engager quoi que ce soit sur ces chiffres.
 
-- **`gosof80` n'a jamais été placé-routé.** La mesure de synthèse (4 326 LUT,
-  2 702 bascules, 8 blocs, 56,3 MHz) vient de `xst` seul. `synthese.sh:5-7` le dit
-  lui-même : « SYNTHÈSE SEULE ». Ni `map`, ni `par`, ni `trce` n'ont tourné sur ce
-  sommet. Un design à 75 % de LUT peut très bien ne pas tenir les 20 ns.
-- **Il n'existe aucun `.ucf` pour `gosof80`.** Donc aucun bitstream, donc aucun
-  chargement.
+- ~~`gosof80` n'a jamais été placé-routé.~~ **Réglé** — voir la section 1 bis.
+- ~~Il n'existe aucun `.ucf` pour `gosof80`.~~ **Réglé** — `gosof_banc` réutilise
+  `banc_sc01.ucf` (mêmes noms de nets), et le bitstream existe. **Reste à charger.**
 - **La parole n'a jamais été entendue**, ni en simulation du sommet ni sur la carte.
+  Le jeu strobe bien le SC-01A (7 phonèmes en 100 ms), mais personne n'a écouté.
 - **La carte SD n'a jamais été lue.** Le chemin SPI, le format d'image et le
   secteur 660 n'ont jamais été exercés sur ce portage.
 - **52 des 64 phonèmes** n'ont jamais produit un échantillon.
