@@ -462,8 +462,8 @@ DFcmd_par2 <=  bg_DFcmd_par2 when ( SB_type = is_MA55 or SB_type = is_SYS1 ) els
 --
 -- Defaut PRISTINE, present a l'identique dans origin/main:GOSOF80.vhd:369.
 -- A signaler a bontango, pas a corriger en silence : c'est son programme.
--- ⚠️ ECRITE DANS CE SENS A DESSEIN. Avec une metavaleur ('U' a l'instant zero),
--- une comparaison IEEE rend FALSE. Ecrite « 1 when = 0 else to_integer(...) », la
+-- a i¸ ECRITE DANS CE SENS A DESSEIN. Avec une metavaleur ('U' a l'instant zero),
+-- une comparaison IEEE rend FALSE. Ecrite Â" 1 when = 0 else to_integer(...) Â", la
 -- garde laisserait donc passer 'U' vers le else, to_integer rendrait 0, et 0 est
 -- hors de la plage 1..31 : la simulation meurt quand meme. Le cas SUR doit etre
 -- le defaut. (Meme piege exactement que la borne d'horloge de sc01_glue.vhd:86.)
@@ -472,9 +472,9 @@ speech_idx <= to_integer(unsigned(Sound_meta)) when unsigned(Sound_meta) >= 1 el
 -- LA DOUBLE PAROLE, ET POURQUOI ELLE APPARAIT MAINTENANT.
 --
 -- Chez bontango, le SC01 est un LEURRE : il ne sort aucun son (Votrax-SC01.vhd:15,
--- « only a simulation of signaling to fool the program »). La parole vient donc
+-- Â" only a simulation of signaling to fool the program Â"). La parole vient donc
 -- entierement du module MP3, declenche par send_flag quand speech_ctrl marque la
--- commande de son comme « parole ». C'est coherent : une seule voix.
+-- commande de son comme Â" parole Â". C'est coherent : une seule voix.
 --
 -- Ce portage met un VRAI SC-01A a la place du leurre. Sur une carte MA-216, le
 -- jeu ecrit un phoneme en $2xxx -- le coeur le synthetise -- ET send_flag monte,
@@ -678,9 +678,9 @@ Trace_Sim : process (clk_50)
 	-- apres `ns` dans deux bancs de simulation.)
 	variable n_ms_prec : integer := -1;
 	variable n_ms      : integer;
-		-- Le nom du phon�me SC-01 pour un code de 6 bits (table du constructeur).
-		-- Sert � VERIFIER la polarit� du bus : le ROM Gottlieb �crit ses codes
-		-- EOR #$3F, donc UNE des deux colonnes (brut / invers�) doit �peler de
+		-- Le nom du phoneme SC-01 pour un code de 6 bits (table du constructeur).
+		-- Sert a VERIFIER la polarite du bus : le ROM Gottlieb ecrit ses codes
+		-- EOR #$3F, donc UNE des deux colonnes (brut / inverse) doit epeler de
 		-- l'anglais, et l'autre du charabia.
 		function nom_phon(c : integer) return string is
 		begin
