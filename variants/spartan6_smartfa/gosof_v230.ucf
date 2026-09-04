@@ -91,12 +91,16 @@ NET "sb_opt<6>"   LOC = "P127" | IOSTANDARD = LVCMOS33 | PULLUP;   # P2.17
 #   bien S1_DIP6 sur PIN93. Une source qui n'est ni le PDF ni la mesure.
 
 # --- S3 « Game Selection » : le numero de jeu -------------------------------
-# ⚠️ Les POSITIONS sont sures, l'ORDRE DES BITS ne l'est pas : le schema ne
-#    numerote pas les bits. game_sel<0> = S2_DIP1 est le choix naturel, PAS
-#    prouve. Sans consequence electrique -- tout est entree -- mais une
-#    permutation choisit un autre jeu et un autre type de carte son
-#    (game_sel(5 downto 3) fixe SB_type). Se verifie en posant Volcano = 111110
-#    et en ecoutant si c'est bien Volcano qui demarre.
+# ORDRE DES BITS : PROUVE par le manuel utilisateur (v1.03, annexe A), recoupe
+# contre le RTL. Source independante du schema et du PCB.
+#   manuel : Mars = les six interrupteurs sur OFF      RTL : Mars = "111111"
+#            -> OFF = '1', coherent avec les PULLUP
+#   manuel : Volcano = S1 seul sur ON                  RTL : "111110", bit 0 a 0
+#            -> S1 = game_sel(0), ON = '0'
+#   manuel : Black Hole = S2 seul   RTL "111101" -> S2 = game_sel(1)
+#   manuel : Rocky      = S3 seul   RTL "111011" -> S3 = game_sel(2)
+# Les bits de famille confirment les cinq cartes : S4 -> "110xxx" = MA-309,
+# S5 -> "10xxxx" = MA-55, S6 -> "01xxxx" = MA-490, S5+S6 -> "00xxxx" = System 1.
 NET "game_sel<0>" LOC = "P22"  | IOSTANDARD = LVCMOS33 | PULLUP;   # P3.18
 NET "game_sel<1>" LOC = "P21"  | IOSTANDARD = LVCMOS33 | PULLUP;   # P3.17
 NET "game_sel<2>" LOC = "P14"  | IOSTANDARD = LVCMOS33 | PULLUP;   # P3.13
@@ -105,7 +109,11 @@ NET "game_sel<4>" LOC = "P11"  | IOSTANDARD = LVCMOS33 | PULLUP;   # P3.11
 NET "game_sel<5>" LOC = "P10"  | IOSTANDARD = LVCMOS33 | PULLUP;   # P3.10
 
 # --- S2 « clock adjustment » : les quatre options ---------------------------
-# Meme reserve sur l'ordre des bits. option(3)='0' force le jeu 0 (GOSOF80:527).
+# ORDRE DES BITS : PROUVE. Le manuel dit « DIP4 sur ON desactive le multi-jeu,
+# lit toujours la premiere ROM » ; GOSOF80.vhd:629 dit
+#   SD_game_sel <= "00000000" when option(3) = '0'
+# ON = masse = '0', donc DIP4 = option(3). Et « DIP 1,2,3 ajustent la vitesse des
+# tons » contre GOSOF80.vhd:526 : clk_adj => option(2 downto 0).
 NET "option<0>"   LOC = "P8"   | IOSTANDARD = LVCMOS33 | PULLUP;   # P3.8
 NET "option<1>"   LOC = "P7"   | IOSTANDARD = LVCMOS33 | PULLUP;   # P3.7
 NET "option<2>"   LOC = "P23"  | IOSTANDARD = LVCMOS33 | PULLUP;   # P3.19

@@ -182,6 +182,39 @@ sont justement dans la liste des **non-parole** de Volcano. Les deux configurati
 donnaient 0 et le test ne prouvait rien. Les codes parole de Volcano sont
 3, 4, 7, 10, 11, 12, 15, 18, 19, 20, 23, 24, 25, 26, 27, 29, 30, 31.
 
+### Le manuel utilisateur ferme les deux dernières inconnues du brochage
+
+Le manuel Gosof v1.03 (HW 2.2.x / SW 0.91, la version exacte de nos sources) donne
+en annexe A la table complète des sélections de jeu. Recoupée contre le RTL, elle
+**prouve l'ordre des bits**, que le schéma ne numérote pas :
+
+| source | ce qu'elle dit | ce que le RTL dit |
+|---|---|---|
+| manuel | Mars = les six DIP sur OFF | `"111111"` → **OFF = '1'** |
+| manuel | Volcano = S1 seul sur ON | `"111110"` → **S1 = `game_sel(0)`**, ON = '0' |
+| manuel | Black Hole = S2 seul | `"111101"` → S2 = bit 1 |
+| manuel | Rocky = S3 seul | `"111011"` → S3 = bit 2 |
+| manuel | « DIP4 ON : lit toujours la première ROM » | `:629` `option(3) = '0'` → jeu 0 |
+| manuel | « DIP 1,2,3 : vitesse des tons » | `:526` `clk_adj => option(2 downto 0)` |
+
+Les cinq familles se recoupent aussi : S4 → `"110xxx"` = MA-309, S5 → `"10xxxx"` =
+MA-55, S6 → `"01xxxx"` = MA-490, S5+S6 → `"00xxxx"` = System 1.
+
+Le manuel confirme au passage trois choses établies autrement :
+ - l'image SD est **obligatoire** parce que le FPGA lit des numéros de secteur
+   fixes et ignore les noms de fichiers (`SD_Card.vhd:189`) ;
+ - il y a **deux** cartes SD : une dans le DFPlayer pour les paroles, une dans le
+   shield pour les ROMs de son ;
+ - et il liste **huit** jeux à parole — alors que le RTL n'en sert que cinq :
+   Striker, Q*Bert's Quest et Caveman ont un masque `speech_ctrl` tout à 1, donc
+   `send_flag` ne peut structurellement jamais monter pour eux. C'est la
+   question 4 à poser à bontango.
+
+⚠️ Et un point qui concerne la machine de Valère : le manuel avertit qu'en
+remplaçant une carte son **version export** par la version à parole, il faut
+changer la ROM du MPU — les versions export ne savent jouer que 15 sons, la carte
+à parole jusqu'à 31.
+
 ---
 
 ## 2. Ce qui a tourné en simulation
