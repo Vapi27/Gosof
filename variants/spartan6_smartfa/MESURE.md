@@ -215,34 +215,47 @@ remplaçant une carte son **version export** par la version à parole, il faut
 changer la ROM du MPU — les versions export ne savent jouer que 15 sons, la carte
 à parole jusqu'à 31.
 
-### Le tirage des lignes de son : trois essais sur la carte
+### Le tirage des lignes de son : ce que le schéma dit, et ce que j'avais dit
 
 Une sortie d'ULN2803 est à **collecteur ouvert** : elle ne sait que tirer vers le
-bas. Les deux tirages ont été essayés sur le matériel, et c'est la paire de
-résultats qui établit la réponse — aucun des deux seul ne suffisait.
+bas. Le schéma `GOSOF_2_30_SCH.pdf` (coin haut-droit) montre **R6, réseau 4 × 4,7K,
+et R8 10K, qui tirent les cinq entrées de l'ULN au +5V**. Au repos — avec ou sans
+MPU — les Darlington conduisent, les sorties sont à la masse, et le FPGA lit
+**00000** : c'est le « initial low due to 2803A » de `GOSOF80.vhd:41`. Une commande
+(le MPU, ou sur banc un cavalier K2 + le poussoir S5 « Sound Test ») met une entrée
+à la masse ; le Darlington se bloque ; c'est le `PULLUP` du FPGA qui fait monter la
+ligne. **Le firmware de production porte donc `PULLUP`**, et c'est le seul tirage
+possible.
 
 | tirage | repos sur banc | commandes |
 |---|---|---|
-| `PULLUP` | **11111** = commande 31 en permanence → parle en boucle | passent |
-| aucun | flottant, bruit → commandes au hasard | aléatoires |
-| `PULLDOWN` | **silencieux** ✅ | **ne passent plus** ❌ |
+| `PULLUP` | 00000 — D2 éteinte (observé) | passent — D2 s'allume (observé) |
+| aucun | ligne libérée = flottante | aléatoires |
+| `PULLDOWN` | silencieux | **ne passent plus** : une ligne libérée ne peut pas monter |
 
-Les deux comportements attendus — repos **bas** et commandes qui **montent** — ne
-peuvent venir que d'une seule configuration : les Darlington **conduisent au
-repos**, ce qui tire la ligne au bas fortement ; une commande en bloque un, et
-c'est le `PULLUP` qui fait monter la ligne. C'est ce que fait la machine, où le
-MPU tient les entrées de l'ULN au haut. **Le firmware de production porte donc
-`PULLUP`.**
+⚠️ **Ce que ce paragraphe affirmait avant était faux, et n'avait jamais été mesuré** :
+que sur banc les entrées de l'ULN flottent, que le FPGA lit 11111 (commande 31) et
+que la carte parle en boucle pour cela. D2 éteinte au repos le réfute à elle seule.
+Le « reste inexpliqué » (la Gosof d'origine silencieuse au repos) n'avait donc rien
+d'inexpliqué : les deux cartes lisent 00000.
 
-Conséquence sur banc, et ce n'est pas un défaut : sans MPU, aucun Darlington ne
-conduit et la carte parle en boucle. Pour un banc silencieux, `SON_INTERNE` ignore
-ces cinq broches.
+La parole **spontanée** vient du ROM Gottlieb lui-même, par deux interrupteurs de
+la carte (désassemblage de Mars et Volcano, ROMs dans `~/gosof-roms`, hors dépôt) :
 
-⚠️ **Reste inexpliqué** : la Gosof d'origine est silencieuse au repos sur banc.
-Cela suppose que ses Darlington conduisent, donc que le réseau `R6` tient les
-entrées de l'ULN au haut — ce qui ne se produit pas sur ce montage. La différence
-est côté porteuse (`R6`, ou son +5 V), pas côté FPGA. Une pointe sur une entrée de
-l'ULN au repos le dirait en dix secondes.
+- **S1 DIP3 / DIP4 — mode attract** (`$F03A`, `$F085`) : si l'un des deux est ON
+  (lu `0` : `riot_pb_i(5) <= SB_Opt(3)`, `riot_pb_i(4) <= SB_Opt(4)`), après un
+  compte à rebours le jeu tire un nombre sur le timer du RIOT et **dit une phrase
+  seul**, puis repart au reset et recommence. DIP3 seul : toutes les ~10 s ; DIP4
+  seul : ~2 min ; les deux : ~4 min (boucle de 35 cycles à 895 kHz, comptes
+  `$0403F9` / `$302FB5` / `$605F6A`). DIP3 et DIP4 OFF : silence au repos.
+- **S4 « Test » — PB6** (`$F069`) : lu `0`, saut en `$FA5B` (Mars) / `$FA49`
+  (Volcano) : phrase, test RAM, test ROM, phrase, bips DAC ; Volcano y fait `SEI`,
+  **les commandes ne passent plus**. Câblage vérifié sur le schéma : S4 → PIN100 →
+  pastille 78 → P2.22 → P137, `PULLUP`.
+- **S1 DIP6** (`$F402`) : lu `1` (OFF), les commandes présentes dans une table de
+  16 entrées (`$F680`) sont **ignorées** — vraisemblablement la parole, le
+  « speech off » du commentaire de bontango ; non vérifié. **S2 DIP4** ON : la SD
+  lit toujours le secteur 660, c'est-à-dire Mars quel que soit S3.
 
 ### U5 gravée
 

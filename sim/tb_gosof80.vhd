@@ -40,7 +40,11 @@ entity tb_gosof80 is
 		DEBUT_US : integer := 2000;
 		REPOS_US : integer := 1000;
 		-- pour le controle croise de la double parole
-		MP3_AUSSI : boolean := false
+		MP3_AUSSI : boolean := false;
+		-- TEST_0 : le poussoir « Test » de la carte son (PB6 du RIOT) lu ENFONCE en
+		-- permanence. Sert a mesurer ce que fait le ROM sans aucune commande de son
+		-- quand cette entree est a '0' (routine $FA49/$FA5B du ROM Gottlieb).
+		TEST_0 : boolean := false
 	);
 end tb_gosof80;
 
@@ -51,6 +55,7 @@ architecture essai of tb_gosof80 is
 	signal jeu_v   : std_logic_vector(5 downto 0);
 	signal led0, led1, led2, dfp_tx, sd_cs, sd_mosi, sd_clk : std_logic;
 	signal fini    : boolean := false;
+	signal test_sw : std_logic;
 begin
 	clk <= not clk after 10 ns;
 
@@ -59,10 +64,12 @@ begin
 		jeu_v(5 - i) <= '1' when JEU(JEU'left + i) = '1' else '0';
 	end generate;
 
+	test_sw <= '0' when TEST_0 else '1';
+
 	dut : entity work.gosof80
 		generic map (SANS_SD => true, TRACE => true, PAROLE_MP3_AUSSI => MP3_AUSSI)
 		port map (
-			clk_50 => clk, reset_sw => '1', test => '1',
+			clk_50 => clk, reset_sw => '1', test => test_sw,
 			Audio_O => audio_o, Sound => son,
 			SB_Opt => (others => '1'),
 			LED_0 => led0, LED_1 => led1, LED_2 => led2,

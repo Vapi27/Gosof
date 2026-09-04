@@ -78,15 +78,23 @@ entity gosof_v230 is
 		--   D1        -> le CPU tourne : le probleme est en aval de lui.
 		DIAG : boolean := false;
 		-- SON_INTERNE : ignorer les cinq fils du MPU et jouer les codes de son
-		-- soi-meme, un toutes les ~2,7 s.
+		-- soi-meme, un toutes les ~2,7 s. Outil de demonstration, rien d'autre.
 		--
-		-- POURQUOI. Les sorties de l'ULN2803 sont a COLLECTEUR OUVERT : elles ne
-		-- savent que tirer vers le bas, et c'est le PULLUP du FPGA qui fabrique le
-		-- '1'. Sans flipper au bout, les entrees de l'ULN flottent, tous les
-		-- transistors sont bloques, et le FPGA lit 11111 EN PERMANENCE -- soit la
-		-- commande 31, sans interruption. Pour Volcano, speech_ctrl marque le 31
-		-- comme parole : la carte parle en boucle et rien ne lui dit d'arreter.
-		-- Ce n'est pas une panne, c'est une carte son sans MPU en face.
+		-- ⚠️ CE QUE CE COMMENTAIRE DISAIT AVANT ETAIT FAUX. Il affirmait que les
+		--    entrees de l'ULN2803 flottent sur banc, que le FPGA lit donc 11111 en
+		--    permanence (commande 31) et que la carte parlait en boucle pour cette
+		--    raison. Le schema GOSOF_2_30_SCH.pdf dit le contraire : R6 (4 x 4,7K)
+		--    et R8 (10K) tirent les CINQ entrees de l'ULN au +5V. Au repos les
+		--    Darlington conduisent, les sorties sont a la masse et le FPGA lit
+		--    00000 -- c'est le « initial low due to 2803A » de GOSOF80.vhd:41.
+		--    K2 + S5 (« Sound Test ») mettent une entree a la masse pour la
+		--    LIBERER : c'est ainsi qu'on pose un code sur banc. La theorie du
+		--    11111 n'avait jamais ete mesuree ; D2 (= OU des lignes de son),
+		--    eteinte au repos et allumee sur commande, la refute.
+		--    La parole spontanee vient du ROM Gottlieb lui-meme, par deux
+		--    interrupteurs de la carte : DIP3/DIP4 de S1 (mode attract, une phrase
+		--    au hasard toutes les ~10 s / ~2 min, $F03A et $F085 de Mars et
+		--    Volcano) ou le poussoir Test lu a '0' (routine de test, $F069).
 		SON_INTERNE : boolean := false
 	);
 	port (
