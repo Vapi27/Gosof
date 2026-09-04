@@ -297,6 +297,34 @@ que six lignes, et `INFLECTION_SRC` vaut 0).
 produit aucun son — il ne s'en sert que pour choisir une durée — donc l'erreur
 était **inaudible** chez lui, mais elle fausse déjà ses durées de phonème.
 
+### 🏆🏆 LE CHEMIN SD EST PROUVE — par le ROM lui-meme
+
+**Entendu le 2026-09-04**, mode **SD** (ROM lue sur la carte micro-SD, image de
+Ralf `Gosof_Image_v1.21_blank.img`), S3 les six poles sur OFF = **Mars**, famille
+MA-216, secteur 660, poussoir **S4** enfonce :
+
+> « **TEST — TURN ALL SWITCHES OFF** »
+
+Ce n'est pas qu'un signe de vie. Le ROM ne dit cette phrase (`$FC8F`) qu'**apres**
+avoir passe son test de RAM ET **somme les deux EPROM** (`$FA70` et `$FA8A`, qui
+sautent sinon a « EPROM ONE FAILS » / « EPROM TWO FAILS »). La carte SD livre donc
+une ROM **exacte au bit pres**, et `cpu_reset_l` est relache au bon moment.
+
+Le portage est fonctionnellement complet en configuration machine :
+SD -> SB_ROM -> T65 -> RIOT -> SC-01A -> melangeur -> delta-sigma -> RC -> TDA7267.
+
+Temoin concordant : en DIAG, **D1 allumee** (le flux audio a change depuis la mise
+sous tension) des que la ROM est chargee, quelle que soit la selection.
+
+⚠️ **ORDRE PHYSIQUE DES POLES DE S3 : NON ETABLI.** L'ordre *logique* est prouve
+(manuel recoupe contre le RTL). Mais avec « pole 1 seul sur ON » — cense donner
+Volcano — le CPU tourne (D1) et **S4 ne declenche rien**, ce qui est la signature
+d'une famille autre que MA-216 : si l'ordre physique etait inverse, `"011111"`
+donnerait MA-490, ou `riot_pb_i(6) <= '0'` rend le poussoir muet. « Tout OFF »,
+symetrique, fonctionne — ce qui est coherent avec l'inversion sans la prouver.
+A trancher par un essai : **pole 6 seul sur ON** doit donner Volcano si l'ordre
+est inverse.
+
 ### Le self-test du ROM, outil de diagnostic gratuit
 
 `outils/dis6502.py` a établi que **S4 maintenu** fait entrer le ROM Gottlieb dans
