@@ -29,8 +29,28 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
+-- Le paquet du jeu : soit gosof_jeu_vide.vhd (des zeros, mode carte SD normal),
+-- soit celui qu'engendre outils/rom_vers_vhdl.py (la ROM dans le bitstream).
+-- Le script de construction choisit lequel des deux il compile.
+use work.gosof_jeu.all;
 
 entity gosof80 is
+	generic (
+		-- SANS_SD : la ROM du jeu vient du bitstream, pas de la carte SD.
+		--
+		-- POURQUOI CE GENERIQUE EXISTE. SD_Card.vhd:255 est le SEUL endroit du
+		-- depot qui relache cpu_reset_l, et son etat `error` (:342) est un puits
+		-- sans retour. Sans carte SD valide, le 6502 ne demarre JAMAIS : silence
+		-- total, sans message, et le seul temoin est une LED qui, sur un module
+		-- nu, n'existe pas. Tant que la SD est sur le chemin critique, on ne peut
+		-- rien entendre du tout -- ni la carte son, ni la parole.
+		--
+		-- A true : les deux SB_ROM sont initialisees a la configuration du FPGA,
+		-- les ecritures de la SD sont neutralisees, et le reset est relache par un
+		-- simple compteur. La SD sort du chemin critique. Le reste du circuit est
+		-- INCHANGE : meme decodage, meme processeur, meme chaine audio.
+		SANS_SD : boolean := false
+	);
 	port(
 		clk_50	: in std_logic;
 		reset_sw	: in std_logic;
@@ -80,6 +100,21 @@ architecture rtl of gosof80 is
 	signal phi2			: 	std_logic; -- CPU clock phase 2
 	signal uart_clk	: std_logic; -- 9600 baud clock for uart
 	signal reset_l		: 	std_logic; -- Ccontroled by SD card reader
+	-- Ce que rend SD_Card. En mode normal c'est lui qui devient reset_l ; en
+	-- SANS_SD on le laisse tourner dans le vide et c'est le compteur qui decide.
+	signal reset_sd	: 	std_logic;
+	-- 2^16 cycles a 50 MHz = 1,31 ms. Genereux : il ne s'agit que de laisser
+	-- l'horloge processeur et le SC-01A sortir de leur propre initialisation,
+	-- pas d'attendre un transfert. (2^20 = 21 ms rendait toute simulation du
+	-- sommet inabordable pour rien.)
+	signal por_cpt		:	unsigned(15 downto 0) := (others => '0');
+	signal reset_por	: 	std_logic := '0';
+	-- '1' quand la carte SD a le droit d'ecrire les ROMs.
+	function bool_vers_sl(b : boolean) return std_logic is
+	begin
+		if b then return '1'; else return '0'; end if;
+	end function;
+	constant SD_ECRIT : std_logic := bool_vers_sl(not SANS_SD);
 
 	signal Sound_meta : 	std_logic_vector(4 downto 0);
 	signal cpu_addr	:	std_logic_vector(15 downto 0);
@@ -120,7 +155,14 @@ architecture rtl of gosof80 is
     
 	-- sounds
 	signal DAC_latch	:  std_logic;
-	signal audio_dat_latch	: 	std_logic_vector(7 downto 0);
+	-- VALEUR INITIALE, pas un ornement. Ce latch n'a aucun reset : tant que le 6502
+	-- n'a pas ecrit en $1xxx il vaut 'U' en simulation, ce qui propage 'X' dans le
+	-- melangeur puis dans le DAC -- et Audio_O reste indefini pour toujours. Sur
+	-- silicium une bascule demarre a 0, donc cette initialisation ne fait que
+	-- rendre le modele conforme au materiel. Mesure : sans elle, la premiere
+	-- simulation du sommet donnait 21222 metavaleurs sur Audio_O contre 0 valeur
+	-- utile. 0x80 est le point de repos exact de la voie son (audio_mix.vhd:65).
+	signal audio_dat_latch	: 	std_logic_vector(7 downto 0) := x"80";
    signal audio_dat	: 	std_logic_vector(7 downto 0);	
 	
 	-- speech
@@ -146,6 +188,8 @@ architecture rtl of gosof80 is
 	signal bg_DFcmd_par2	:  std_logic_vector(7 downto 0);	
 	
 	signal speech_ctrl :  std_logic_vector(31 downto 1);
+	-- indice borne a la plage reelle du vecteur ; voir le commentaire sur send_flag
+	signal speech_idx  :  integer range 1 to 31;
 	
 	-- SD card
 	signal address_sd_card	:  std_logic_vector(13 downto 0);
@@ -267,14 +311,16 @@ sc01_strobe 	<= SC01_cs and not cpu_clk;
 -- else map to address room
 
 -- content of sound rom 1 is read from first 2K of SD
-wr_soundrom1 <= '1' when ((wr_rom='1') and (address_sd_card(13 downto 11) ="000" )) else '0';
+-- SD_ECRIT vaut '0' en SANS_SD : sans ca, la machine d'etat SD -- qui tourne
+-- toujours, meme sans carte -- pourrait ecraser la ROM initialisee.
+wr_soundrom1 <= '1' when ((wr_rom='1') and SD_ECRIT='1' and (address_sd_card(13 downto 11) ="000" )) else '0';
 soundrom1_addr <=  --2K
 	address_sd_card(10 downto 0) when wr_soundrom1 = '1' else
 	'0' & cpu_addr(9 downto 0) when (SB_type = is_MA55 or SB_type = is_SYS1) else -- MA55 and SYS1 have only 1K rom
 	cpu_addr(10 downto 0);
 
 -- content of sound rom 2 is read from second 2K of SD
-wr_soundrom2 <= '1' when ((wr_rom='1') and (address_sd_card(13 downto 11) ="001" )) else '0';
+wr_soundrom2 <= '1' when ((wr_rom='1') and SD_ECRIT='1' and (address_sd_card(13 downto 11) ="001" )) else '0';
 soundrom2_addr <=  --2K
 	address_sd_card(10 downto 0) when wr_soundrom2 = '1' else
 	'0' & cpu_addr(9 downto 0) when (SB_type = is_MA55 or SB_type = is_SYS1) else -- MA55 and SYS1 have only 1K rom
@@ -389,8 +435,30 @@ X"00"; --default 0 (e.g. for SYS1)
 
 DFcmd_par2 <=  bg_DFcmd_par2 when ( SB_type = is_MA55 or SB_type = is_SYS1 ) else "000" & Sound_meta;
 
+-- PORTABILITE : l'index de speech_ctrl est BORNE. Le vecteur est declare
+-- (31 downto 1), mais to_integer(unsigned(Sound_meta)) vaut 0 a 31 -- et 0 est
+-- justement l'etat de REPOS des entrees son. Le garde a gauche du `and` etait
+-- cense proteger, mais en VHDL le `and` n'est PAS court-circuitant : les deux
+-- operandes sont evalues, et l'indice 0 sort du vecteur. Ca se synthetise sans
+-- broncher et ca ne peut pas se simuler -- la toute premiere elaboration de
+-- gosof80 meurt a l'instant zero, avant meme le premier front d'horloge.
+--
+-- LA CORRECTION EST NEUTRE, et c'est verifiable : quand Sound_meta vaut 0, le
+-- garde ( Sound_meta(0) or ... or Sound_meta(3) ) vaut deja '0', donc le
+-- resultat est '0' quelle que soit la valeur lue. Borner l'indice a 1 ne change
+-- donc aucun comportement -- ca rend seulement l'expression legale.
+--
+-- Defaut PRISTINE, present a l'identique dans origin/main:GOSOF80.vhd:369.
+-- A signaler a bontango, pas a corriger en silence : c'est son programme.
+-- ⚠️ ECRITE DANS CE SENS A DESSEIN. Avec une metavaleur ('U' a l'instant zero),
+-- une comparaison IEEE rend FALSE. Ecrite « 1 when = 0 else to_integer(...) », la
+-- garde laisserait donc passer 'U' vers le else, to_integer rendrait 0, et 0 est
+-- hors de la plage 1..31 : la simulation meurt quand meme. Le cas SUR doit etre
+-- le defaut. (Meme piege exactement que la borne d'horloge de sc01_glue.vhd:86.)
+speech_idx <= to_integer(unsigned(Sound_meta)) when unsigned(Sound_meta) >= 1 else 1;
+
 send_flag <= bg_send_flag when ( SB_type = is_MA55 or SB_type = is_SYS1 ) else
-				 ( Sound_meta(0) or Sound_meta(1) or Sound_meta(2) or Sound_meta(3)) and not speech_ctrl(to_integer(unsigned(Sound_meta)));
+				 ( Sound_meta(0) or Sound_meta(1) or Sound_meta(2) or Sound_meta(3)) and not speech_ctrl(speech_idx);
 
 				
 				
@@ -526,6 +594,36 @@ port  map(
 SD_game_sel <= "00000000" when option(3) = '0' else -- with DIP4 ON read gamne #0 (sector #660 )
 					"00" & not game_sel(5 downto 0);
 
+-- ------------------------------------------------------------------------
+-- LE RESET, ET D'OU IL VIENT.
+-- En mode normal c'est la carte SD qui le relache, une fois les 4 Ko charges.
+-- En SANS_SD la ROM est deja dans le bitstream : un compteur suffit. 2^20
+-- cycles a 50 MHz = 21 ms, largement de quoi laisser l'horloge processeur et
+-- le SC-01A sortir de leur propre initialisation.
+Reset_Sans_SD : process (clk_50)
+begin
+	if rising_edge(clk_50) then
+		if por_cpt(por_cpt'high) = '0' then
+			por_cpt   <= por_cpt + 1;
+			reset_por <= '0';
+		else
+			reset_por <= '1';
+		end if;
+	end if;
+end process;
+
+reset_l <= reset_por when SANS_SD else reset_sd;
+
+-- LE GARDE-FOU. Construire en SANS_SD avec le paquet gosof_jeu VIDE donnerait un
+-- 6502 executant 4 Ko de zeros : ca se compile, ca se place, ca se charge, et ca
+-- ne dit rien. C'est exactement la famille de pannes que ce projet paie cher.
+assert (not SANS_SD) or JEU_PRESENT
+	report "SANS_SD=true mais le paquet gosof_jeu est le paquet VIDE : les ROMs "
+	     & "seraient a zero et le 6502 executerait du neant. Engendrez la ROM "
+	     & "avec outils/rom_vers_vhdl.py et compilez ce fichier-la a la place de "
+	     & "rtl/spartan6/gosof_jeu_vide.vhd."
+	severity failure;
+
 SD_CARD: entity work.SD_Card
 port map(	
 	--
@@ -544,7 +642,7 @@ port map(
 	data_sd_card => data_sd_card,
 	wr_rom => wr_rom,
 	-- control CPU
-	cpu_reset_l => reset_l,
+	cpu_reset_l => reset_sd,
 	-- feedback
 	SDcard_error => LED_0
 	);	
@@ -552,6 +650,7 @@ port map(
 -- soundrom1 for MA219/MA309
 -- soundrom for MA55 and others	
 SOUNDROM1: entity work.SB_ROM -- ROM 2KByte
+generic map( INIT => JEU_ROM1 )   -- zeros avec le paquet vide ; la ROM en SANS_SD
 port map(
 	address	=> soundrom1_addr,  -- 10 downto 0
 	clock		=> clk_50, 
@@ -563,6 +662,7 @@ port map(
 -- soundrom2 for MA219/MA309
 -- maskrom (R6530 internal) for MA55 and others	
 SOUNDROM2: entity work.SB_ROM -- ROM 2KByte
+generic map( INIT => JEU_ROM2 )
 port map(
 	address	=> soundrom2_addr,  -- 10 downto 0
 	clock		=> clk_50, 

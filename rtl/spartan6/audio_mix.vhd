@@ -26,7 +26,18 @@ entity audio_mix is
 		-- Gain de la parole en Q8 : 256 = x1,0. C'est le « Speech Vol. » numerique.
 		-- Il doit pouvoir MONTER : les echantillons de reference du coeur cretent
 		-- ~11 dB sous une source qui remplirait ses 8 bits.
-		SPCH_GAIN : integer := 512
+		--
+		-- ⚠️ IL NE POUVAIT PAS. Le multiplicateur etait ecrit to_signed(SPCH_GAIN, 11)
+		--    -- un signe de 11 bits va de -1024 a +1023. A 1024 le gain s'INVERSAIT
+		--    (bit de signe), et a 2048 = 2^11 il valait EXACTEMENT ZERO : la branche
+		--    parole devenait constante et la synthese supprimait tout le SC-01A,
+		--    2525 messages de suppression, 102 LUT au lieu de 3242. Aucune erreur,
+		--    aucun avertissement lisible. Paye au banc, sur la vraie carte.
+		--    La largeur est desormais un generique, et un assert l'arrete au lieu
+		--    de la laisser passer.
+		SPCH_GAIN : integer := 512;
+		-- Largeur du multiplicateur de gain. Doit contenir SPCH_GAIN en SIGNE.
+		LARG_GAIN : integer := 16
 	);
 	port (
 		clk        : in  std_logic;
@@ -55,7 +66,7 @@ architecture rtl of audio_mix is
 	end function;
 
 	signal gos_s18 : signed(17 downto 0);
-	signal produit : signed(28 downto 0);
+	signal produit : signed(17 + LARG_GAIN downto 0);
 	signal parole  : signed(17 downto 0);
 	signal somme   : signed(18 downto 0);
 	signal melange : signed(17 downto 0);
@@ -65,10 +76,19 @@ begin
 	gos_s18 <= shift_left(resize(signed('0' & gosof_u8), 18), 9)
 	           - to_signed(65536, 18);
 
+	-- LE GARDE-FOU. Sans lui, un SPCH_GAIN trop grand pour la largeur du
+	-- multiplicateur est tronque EN SILENCE -- et a 2^(LARG_GAIN-1) il devient nul,
+	-- ce qui fait disparaitre toute la parole a la synthese sans un mot.
+	assert SPCH_GAIN < 2**(LARG_GAIN - 1) and SPCH_GAIN > -(2**(LARG_GAIN - 1))
+		report "SPCH_GAIN = " & integer'image(SPCH_GAIN)
+		     & " ne tient pas dans LARG_GAIN = " & integer'image(LARG_GAIN)
+		     & " bits signes : le gain serait tronque, voire NUL."
+		severity failure;
+
 	-- Gain Q8. Le produit est calcule en PLEINE largeur puis borne : borner
 	-- apres l'addition seulement laisserait un gain eleve reboucler avant.
-	produit <= speech_s18 * to_signed(SPCH_GAIN, 11);
-	parole  <= borner(produit(28 downto 8));
+	produit <= speech_s18 * to_signed(SPCH_GAIN, LARG_GAIN);
+	parole  <= borner(produit(17 + LARG_GAIN downto 8));
 
 	somme   <= resize(gos_s18, 19) + resize(parole, 19);
 	melange <= borner(somme);

@@ -110,6 +110,16 @@ architecture rtl of banc_sc01 is
 	signal melange  : std_logic_vector(15 downto 0);
 	signal flux     : std_logic;
 
+	-- LE BIP DE REFERENCE. Il ne depend NI du reset NI du sequenceur, exactement
+	-- comme le battement de coeur que Valere a entendu. C'est lui qui distingue
+	-- « le design ne tourne pas » de « la parole est trop faible » : deux pannes
+	-- qui s'entendent toutes les deux comme un silence.
+	-- Il passe par la voie « son » du melangeur (gosof_u8), pleine echelle.
+	signal bip_demi : unsigned(16 downto 0) := (others => '0');   -- 440 Hz
+	signal bip_carre : std_logic := '0';
+	signal bip_cycle : unsigned(27 downto 0) := (others => '0');  -- ~5,4 s
+	signal voie_son : std_logic_vector(7 downto 0);
+
 begin
 
 	-- ------------------------------------------------------------------
@@ -244,13 +254,35 @@ begin
 			audio_s18 => sc01_s18
 		);
 
-	-- La voie « son » de Gosof est absente ici : 0x80 est son point de repos
-	-- exact (audio_mix.vhd:65-66 — 128 decale de 9 vaut 65536, moins 65536 = 0).
+	-- Le bip : 440 Hz pleine echelle pendant ~0,4 s toutes les ~5,4 s.
+	Bip : process (clk_50)
+	begin
+		if rising_edge(clk_50) then
+			bip_cycle <= bip_cycle + 1;
+			if bip_demi >= 56818 then           -- 50e6 / 440 / 2
+				bip_demi  <= (others => '0');
+				bip_carre <= not bip_carre;
+			else
+				bip_demi <= bip_demi + 1;
+			end if;
+		end if;
+	end process;
+
+	-- 0x80 est le point de repos EXACT de cette voie (audio_mix.vhd:65-66 : 128
+	-- decale de 9 vaut 65536, moins 65536 = 0). 0x00 et 0xFF sont la pleine
+	-- echelle : le bip est donc bien plus fort que la parole, a dessein.
+	voie_son <= x"80" when bip_cycle(27 downto 24) /= "0000"
+	       else x"FF" when bip_carre = '1'
+	       else x"00";
+
+	-- SPCH_GAIN monte de 512 a 2048 : la parole cretait a 30 % de l'echelle, ce
+	-- qui la mettait ~10 dB sous le battement de coeur. Le melangeur SATURE, il
+	-- ne reboucle pas (audio_mix.vhd:46-55), donc monter est sans danger.
 	Melangeur : entity work.audio_mix
-		generic map (SPCH_GAIN => 512)
+		generic map (SPCH_GAIN => 1024)   -- x4 : la parole cretait a 30 % de l echelle
 		port map (
 			clk        => clk_50,
-			gosof_u8   => x"80",
+			gosof_u8   => voie_son,
 			speech_s18 => sc01_s18,
 			dac_u16    => melange
 		);

@@ -1,3 +1,11 @@
 *.cf
 work-obj*
 build/
+
+# ROMs de jeu : code Gottlieb, JAMAIS dans ce depot (GPL, destine a remonter
+# chez bontango). Engendrees par outils/rom_vers_vhdl.py, a garder hors arbre.
+gosof_jeu.vhd
+gosof_jeu_[!v]*.vhd
+*_rom1.bin
+*_rom2.bin
+*.img

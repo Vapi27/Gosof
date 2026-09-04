@@ -43,6 +43,13 @@ use ieee.numeric_std.all;
 use work.gosof_mem.all;
 
 entity SB_ROM is
+	generic (
+		-- Contenu a la configuration du FPGA. Par defaut des zeros : la carte SD
+		-- ecrit les ROMs au demarrage, c'est le fonctionnement d'origine. En mode
+		-- SANS_SD, gosof80 y passe la ROM du jeu (paquet gosof_jeu) et la SD sort
+		-- du chemin critique -- voir outils/rom_vers_vhdl.py.
+		INIT : octet_t(0 to 2047) := (others => (others => '0'))
+	);
 	port (
 		address : in  std_logic_vector(10 downto 0);
 		clock   : in  std_logic := '1';
@@ -53,7 +60,7 @@ entity SB_ROM is
 end SB_ROM;
 
 architecture spartan6 of SB_ROM is
-	signal mem : octet_t(0 to 2047) := (others => (others => '0'));
+	signal mem : octet_t(0 to 2047) := INIT;
 begin
 	process (clock)
 	begin

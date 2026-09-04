@@ -76,6 +76,19 @@ if grep -qE '^ERROR' banc_sc01.syr xst.log 2>/dev/null; then
   echo "XST : erreurs, ARRET"; grep -hE '^ERROR' banc_sc01.syr xst.log | head -12; exit 1
 fi
 
+# GARDE-FOU DE TAILLE. Un SPCH_GAIN trop large a rendu la branche parole
+# constante : XST a supprime tout le SC-01A, 102 LUT au lieu de 3242, sans une
+# seule ERROR. Le bitstream se construisait, se chargeait, et ne disait rien.
+# En dessous de 2000 LUT le coeur n est plus la : on refuse de continuer.
+LUTS=$(grep -oE "Number of Slice LUTs: *[0-9]+" banc_sc01.syr | grep -oE "[0-9]+$" | head -1)
+if [ -z "$LUTS" ] || [ "$LUTS" -lt 2000 ]; then
+  echo "SYNTHESE EFFONDREE : ${LUTS:-?} LUT (attendu ~3200). Le SC-01A a ete supprime."
+  echo "  cause typique : une entree du melangeur devenue constante."
+  grep -cE "WARNING:Xst:2677" banc_sc01.syr | sed "s/^/  noeuds non connectes : /"
+  exit 1
+fi
+echo "   place : $LUTS LUT"
+
 echo "== 2/6 ngdbuild =="
 $X/ngdbuild -intstyle silent -p $COMPOSANT -uc banc_sc01.ucf banc_sc01.ngc banc_sc01.ngd
 
