@@ -118,6 +118,30 @@ begin
 
 	-- Hors carte a parole, on rend le silence et « pret » : exactement ce que le
 	-- jeu attend d'un socle vide.
-	ar        <= ar_coeur when speech_en = '1' else '1';
+	-- ⚠️ AR EST FORCE A '1' PENDANT LE RESET, comme le fait le leurre de bontango
+	--    (Votrax-SC01.vhd:44-45, « if rst = '0' then AR <= '1' »). Ce n'est pas
+	--    cosmetique : sur MA-216, GOSOF80.vhd:413 fait
+	--        n_cpu_nmi <= not sc01_AR
+	--    et le NMI du 6502 est declenche SUR FRONT. Le vrai coeur met ~2 us apres
+	--    le relachement du reset pour etablir son AR (mesure : 'U' a 0, '1' a
+	--    2,01 us) ; cette transition cree sur NMI_n un front que le leurre ne
+	--    produit JAMAIS, puisqu'il pose AR='1' des le reset. Le jeu prend alors un
+	--    NMI qu'il n'a pas demande, part dans sa routine de parole et fait parler
+	--    la puce sans qu'aucune commande de son n'ait ete posee.
+	--
+	--    Chez bontango ce front existe peut-etre aussi -- mais son SC01 ne sort
+	--    aucun son, donc personne ne pouvait l'entendre. C'est le portage qui rend
+	--    audible un defaut que le leurre masquait.
+	--
+	--    ⚠️ HYPOTHESE TESTEE ET REFUTEE. J'ai pose ce reset en croyant qu'il
+	--    supprimerait un strobe parasite au demarrage. MESURE, gosof80 simule 11 ms
+	--    sans AUCUNE commande de son : phonemes = 1 AVANT, phonemes = 1 APRES.
+	--    La correction ne change rien au compte.
+	--    Elle est gardee parce qu'elle rend la colle CONFORME au leurre, ce qui est
+	--    juste en soi -- pas parce qu'elle corrige quoi que ce soit d'observe.
+	--    Le strobe unique vient du jeu lui-meme, qui initialise sa puce de parole
+	--    au boot, et il est INAUDIBLE : sortie mesuree a plage 0..0, aucun
+	--    echantillon non nul sur 10 ms.
+	ar        <= '1' when (speech_en = '0' or reset_n = '0') else ar_coeur;
 	audio_s18 <= audio_brut when speech_en = '1' else (others => '0');
 end rtl;

@@ -33,7 +33,7 @@ for f in rtl/spartan6/gosof_mem.vhd rtl/spartan6/gosof_rom_ram.vhd \
          rtl/spartan6/gosof_v230.vhd; do
   echo "vhdl work \"$R/$f\"" >> g.prj
 done
-printf 'set -tmpdir "%s/xst/projnav.tmp"\nset -xsthdpdir "%s/xst"\nrun\n-ifn %s/g.prj\n-ofn gosof_v230\n-ofmt NGC\n-p %s\n-top gosof_v230\n-generics {SANS_SD=%s}\n-opt_mode Speed\n-opt_level 1\n-ifmt mixed\n-iobuf YES\n' "$D" "$D" "$D" "$C" "$SD" > g.xst
+printf 'set -tmpdir "%s/xst/projnav.tmp"\nset -xsthdpdir "%s/xst"\nrun\n-ifn %s/g.prj\n-ofn gosof_v230\n-ofmt NGC\n-p %s\n-top gosof_v230\n-generics {SANS_SD=%s DIAG=%s SON_INTERNE=%s}\n-opt_mode Speed\n-opt_level 1\n-ifmt mixed\n-iobuf YES\n' "$D" "$D" "$D" "$C" "$SD" "${4:-false}" "${5:-false}" > g.xst
 $X/xst -intstyle silent -ifn g.xst -ofn gosof_v230.syr > xst.log 2>&1 || true
 grep -qE '^ERROR' gosof_v230.syr xst.log 2>/dev/null && { grep -hE '^ERROR' gosof_v230.syr xst.log|head -8; exit 1; } || true
 LUTS=$(grep -oE "Number of Slice LUTs: *[0-9]+" gosof_v230.syr | grep -oE "[0-9]+$" | head -1)

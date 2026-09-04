@@ -73,6 +73,34 @@ NET "audio"       LOC = "P67"  | IOSTANDARD = LVCMOS33 | DRIVE = 12 | SLEW = SLO
 # --- les cinq fils du MPU, derriere l'ULN2803 -------------------------------
 # L'ULN2803 INVERSE deja : d'ou riot_pa_i(n) <= Sound_meta(n) sans `not` dans
 # gosof80. Ses sorties sont a COLLECTEUR OUVERT : jamais de sortie FPGA ici.
+#
+# ⚠️ LE PULLUP EST INDISPENSABLE, ET LE BANC N'EST PAS UN ARGUMENT CONTRE.
+#
+#    Un ULN2803 a des sorties a COLLECTEUR OUVERT : elles ne savent que tirer vers
+#    le BAS. Pour que le FPGA lise un '1', il faut un tirage vers le haut -- et il
+#    n'y en a aucun cote FPGA sur cette carte : R8 est une resistance UNIQUE, elle
+#    ne peut pas servir cinq lignes. C'est donc le FPGA qui doit le fournir.
+#
+#    SUR MACHINE : le MPU tient les entrees de l'ULN au haut au repos, les
+#    Darlington conduisent, le FPGA lit 00000. Une commande de son bloque un
+#    Darlington, la ligne remonte grace a ce PULLUP, le bit passe a '1'.
+#
+#    SUR BANC, entrees de l'ULN EN L'AIR : aucun Darlington ne conduit, tout
+#    remonte, le FPGA lit 11111 -- la commande 31 en permanence. Pour Volcano,
+#    speech_ctrl marque le 31 comme parole : la carte parle en boucle. Ce n'est pas
+#    un defaut, c'est une carte son sans MPU en face.
+#
+#    ⚠️ NE PAS « CORRIGER » CA EN RETIRANT LE PULLUP. Sans tirage les lignes
+#       FLOTTENT, attrapent du bruit et produisent des commandes au hasard : c'est
+#       pire, et ca casse la lecture sur machine. Essaye et mesure : les deux
+#       etats ont ete observes sur la carte.
+#       Pour un banc silencieux, utiliser le generique SON_INTERNE de gosof_v230,
+#       qui ignore ces cinq broches et joue les codes lui-meme.
+#
+#    ET LE RTL EST HORS DE CAUSE, c'est mesure : gosof80 simule 11 ms sans AUCUNE
+#    commande de son sort une plage 0..0, un seul niveau, zero echantillon non
+#    nul. Le seul strobe emis au demarrage est le jeu qui initialise sa puce de
+#    parole, et il est inaudible.
 NET "sound<0>"    LOC = "P118" | IOSTANDARD = LVCMOS33 | PULLUP;   # P2.10, S1
 NET "sound<1>"    LOC = "P119" | IOSTANDARD = LVCMOS33 | PULLUP;   # P2.11, S2
 NET "sound<2>"    LOC = "P126" | IOSTANDARD = LVCMOS33 | PULLUP;   # P2.16, S4

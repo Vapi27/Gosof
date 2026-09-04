@@ -58,7 +58,36 @@ entity gosof_v230 is
 		-- et son mode de panne est le silence total sans message (SD_Card.vhd:255
 		-- est le seul point qui relache cpu_reset_l, et son etat `error` est un
 		-- puits sans retour).
-		SANS_SD : boolean := true
+		SANS_SD : boolean := true;
+		-- DIAG : detourne D1 et D2 pour repondre a UNE question -- le 6502
+		-- tourne-t-il ? Les temoins d'origine ne le disent pas :
+		--   LED_0 « SD Error » est a '1' (eteinte) AU RESET comme a all_done
+		--     (SD_Card.vhd:160 et :354) : son extinction ne prouve RIEN.
+		--   LED_2 est du cablage combinatoire pur -- riot_pa_i(7) est un OU des
+		--     quatre lignes de son (GOSOF80.vhd:382). Elle s'allume meme si le
+		--     processeur n'a jamais demarre.
+		-- En DIAG :
+		--   D1 (P26) : le flux audio a CHANGE depuis la mise sous tension.
+		--              Allumee => le 6502 execute et ecrit son DAC.
+		--   D2 (P27) : sd_clk a bascule dans la derniere seconde.
+		--              Allumee => la machine d'etat SD parle a la carte.
+		-- Les deux se lisent ensemble :
+		--   D2 seule  -> la SD tourne mais le CPU n'est jamais parti : la lecture
+		--                echoue ou boucle, le reset n'est jamais relache.
+		--   aucune    -> la machine d'etat SD ne tourne meme pas.
+		--   D1        -> le CPU tourne : le probleme est en aval de lui.
+		DIAG : boolean := false;
+		-- SON_INTERNE : ignorer les cinq fils du MPU et jouer les codes de son
+		-- soi-meme, un toutes les ~2,7 s.
+		--
+		-- POURQUOI. Les sorties de l'ULN2803 sont a COLLECTEUR OUVERT : elles ne
+		-- savent que tirer vers le bas, et c'est le PULLUP du FPGA qui fabrique le
+		-- '1'. Sans flipper au bout, les entrees de l'ULN flottent, tous les
+		-- transistors sont bloques, et le FPGA lit 11111 EN PERMANENCE -- soit la
+		-- commande 31, sans interruption. Pour Volcano, speech_ctrl marque le 31
+		-- comme parole : la carte parle en boucle et rien ne lui dit d'arreter.
+		-- Ce n'est pas une panne, c'est une carte son sans MPU en face.
+		SON_INTERNE : boolean := false
 	);
 	port (
 		clk_50   : in  std_logic;                       -- P51, oscillateur Y2
@@ -101,7 +130,54 @@ entity gosof_v230 is
 end gosof_v230;
 
 architecture rtl of gosof_v230 is
+	signal l1_int, l2_int : std_logic;
+	signal flux, flux_p   : std_logic;
+	signal clk_p          : std_logic := '0';
+	signal a_change       : std_logic := '0';
+	signal sd_vu          : std_logic := '0';
+	signal fenetre        : unsigned(25 downto 0) := (others => '0');
+	signal sd_clk_i       : std_logic;
+	signal son_cpt        : unsigned(27 downto 0) := (others => '0');
+	signal code           : integer range 0 to 31 := 1;
+	signal son_eff        : std_logic_vector(4 downto 0);
 begin
+
+	-- ------------------------------------------------------------------
+	-- LE TEMOIN QUI MANQUAIT. Rien dans gosof80 ne dit si le 6502 tourne.
+	-- Ici on regarde deux choses que lui seul peut produire.
+	-- ------------------------------------------------------------------
+	Sonde : process (clk_50)
+	begin
+		if rising_edge(clk_50) then
+			flux_p <= flux;
+			clk_p  <= sd_clk_i;
+			-- le flux delta-sigma change des que le DAC est alimente par autre
+			-- chose qu'une constante : c'est la signature du processeur au travail
+			if flux /= flux_p then a_change <= '1'; end if;
+			-- l'horloge SPI ne bascule que si la machine d'etat SD tourne
+			fenetre <= fenetre + 1;
+			if sd_clk_i /= clk_p then sd_vu <= '1'; end if;
+			if fenetre = 0 then sd_vu <= '0'; end if;   -- fenetre glissante ~1,3 s
+		end if;
+	end process;
+
+	-- ------------------------------------------------------------------
+	-- Le MPU du flipper, quand il n'y en a pas : un code toutes les ~2,7 s,
+	-- puis ~2,7 s de repos a zero -- l'etat de repos reel des entrees.
+	-- ------------------------------------------------------------------
+	Sequenceur : process (clk_50)
+	begin
+		if rising_edge(clk_50) then
+			son_cpt <= son_cpt + 1;
+			if son_cpt(son_cpt'high) = '1' and son_cpt(son_cpt'high - 1 downto 0) = 0 then
+				if code >= 31 then code <= 1; else code <= code + 1; end if;
+			end if;
+		end if;
+	end process;
+
+	son_eff <= sound when not SON_INTERNE
+	      else std_logic_vector(to_unsigned(code, 5)) when son_cpt(son_cpt'high) = '0'
+	      else "00000";
 
 	Gosof : entity work.gosof80
 		generic map (
@@ -116,12 +192,12 @@ begin
 			clk_50   => clk_50,
 			reset_sw => '1',            -- aucune source sur cette porteuse
 			test     => test_sw,
-			Audio_O  => audio,
-			Sound    => sound,
+			Audio_O  => flux,
+			Sound    => son_eff,
 			SB_Opt   => sb_opt,
 			LED_0    => led_0,
-			LED_1    => led_1,
-			LED_2    => led_2,
+			LED_1    => l1_int,
+			LED_2    => l2_int,
 			game_sel => game_sel,
 			option   => option,
 			DFP_Busy => '1',            -- rien ne lit ce port : XST le supprimerait
@@ -129,6 +205,11 @@ begin
 			SD_CS    => sd_cs,
 			SD_MISO  => sd_miso,
 			SD_MOSI  => sd_mosi,
-			SD_CLK   => sd_clk);
+			SD_CLK   => sd_clk_i);
+
+	audio  <= flux;
+	sd_clk <= sd_clk_i;
+	led_1  <= a_change when DIAG else l1_int;
+	led_2  <= sd_vu    when DIAG else l2_int;
 
 end rtl;
