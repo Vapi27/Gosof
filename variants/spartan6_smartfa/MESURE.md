@@ -93,6 +93,33 @@ le filtre R4/C8 de la carte Gosof, le potentiometre R5 et l'ampli TDA7267.
 
 C'est la premiere fois que ce portage produit du son sur du materiel.
 
+### Et LA PAROLE SORT
+
+Une voix s'entend, produite par le cœur Votrax SC-01A. Elle ne peut venir de nulle
+part ailleurs, et c'est ce qui rend l'observation concluante :
+
+ - le `SC01` de bontango est un LEURRE. `Votrax-SC01.vhd:15` le dit lui-meme :
+   « This is only a simulation of signaling to fool the program that SC01 is
+   there ». Il baisse `AR` pendant une duree prise dans une table, et c'est tout.
+   Aucun echantillon n'en sort.
+ - chez lui, la parole vient de fichiers MP3 joues par un module DFPlayer. Ce
+   module n'est PAS branche sur ce banc (`DFP_Busy` est cable a '1').
+ - donc la voix ne peut venir que du cœur integre dans ce portage, strobe par le
+   programme Gottlieb d'origine, avec l'horloge que le JEU ecrit en page $3xxx --
+   celle que Gosof decodait et jetait.
+
+⚠️ CE QUI N'EST PAS PROUVE POUR AUTANT : que la voix soit **JUSTE**. Deux reglages
+   reposent sur des sources faibles, et ils s'entendent tous les deux :
+    - la loi qui convertit l'octet du jeu en frequence vient de MAME, qui la
+      qualifie elle-meme de « totally random guesswork; would like to get real
+      measurements on a board ». Le portage la suit a 0,6 % pres -- mais suivre
+      exactement une conjecture ne la rend pas vraie.
+    - `INFLECTION_SRC = 0` a ete choisi sans preuve. Si la MA-216 cablait D6/D7 sur
+      les entrees d'inflexion I1/I2 du SC-01, il y a presque une octave d'ecart
+      entre « 00 » et « 11 », et le portage a pris l'extreme grave sans le savoir.
+   Ces deux points se tranchent au frequencemetre sur une vraie MA-216, pas au
+   clavier.
+
 ### La broche audio : quatre reponses, trois fausses
 
 Le sujet a coute une demi-journee. Le detail vaut d'etre garde, parce que les
@@ -178,9 +205,8 @@ La branche de saturation reste non exercée.
 - ~~`gosof80` n'a jamais été placé-routé.~~ **Réglé** — voir la section 1 bis.
 - ~~Il n'existe aucun `.ucf` pour `gosof80`.~~ **Réglé** — `gosof_banc` réutilise
   `banc_sc01.ucf` (mêmes noms de nets), et le bitstream existe. **Reste à charger.**
-- **La PAROLE n'a toujours pas été entendue.** Les sons de jeu, oui — la parole du
-  SC-01A, non. Le jeu le strobe bien (7 phonèmes en 100 ms de simulation), mais
-  rien ne prouve encore que la voix sorte, ni qu'elle soit juste.
+- ~~La PAROLE n'a jamais été entendue.~~ **ENTENDUE le 04/09/2026** — voir 1 ter.
+  Reste ouvert : que la voix soit **JUSTE**. C'est une autre affaire, voir plus bas.
 - **La carte SD n'a jamais été lue.** Le chemin SPI, le format d'image et le
   secteur 660 n'ont jamais été exercés sur ce portage.
 - **52 des 64 phonèmes** n'ont jamais produit un échantillon.
