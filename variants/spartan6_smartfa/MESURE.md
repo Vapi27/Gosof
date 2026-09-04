@@ -84,6 +84,54 @@ multiplie devra se replier sur des LUT.
 
 ---
 
+## 1 ter. ENTENDU — Gosof complet, sur la carte, le 04/09/2026
+
+**Les sons de Volcano sortent du haut-parleur, et ils sont reconnaissables.**
+Le programme d'origine du jeu, execute par le T65 dans le Spartan-6, ecrit son
+DAC echantillon par echantillon ; le flux delta-sigma sort sur **P67**, traverse
+le filtre R4/C8 de la carte Gosof, le potentiometre R5 et l'ampli TDA7267.
+
+C'est la premiere fois que ce portage produit du son sur du materiel.
+
+### La broche audio : quatre reponses, trois fausses
+
+Le sujet a coute une demi-journee. Le detail vaut d'etre garde, parce que les
+trois erreurs sont de trois natures differentes.
+
+| broche | d'ou elle venait | pourquoi c'etait faux |
+|---|---|---|
+| P4.3 | un battement a 1,5 Hz **entendu** | un creneau plein rail a cette frequence traverse n'importe quel couplage parasite. Ca prouvait qu'il existait UN chemin, pas que c'etait LE chemin audio. |
+| P56 | `CONNECTORS_MAP.md:129`, PIN_31 → P4.15 | cette table est exacte, mais elle decrit la **devboard Cyclone 10** de bontango. La porteuse GOSOF 2.30 accueille un **EP2C5T144C8**, un Cyclone II : « PIN_31 » n'y designe pas la meme position. |
+| P44 | un test **a l'oreille** a trois hauteurs | demander de distinguer 220/440/880 Hz dans un haut-parleur de flipper ET de retenir l'ordre n'est pas une mesure. Le « je ne suis pas sur » de l'operateur etait la bonne reponse : c'est l'instrument qu'il fallait changer. |
+| **P67** | **tracage du cuivre du PCB + analyseur** | ✅ deux methodes independantes, concordantes |
+
+Le tracage a suivi le cuivre depuis la pastille gauche de `R4` : trois nœuds, un
+via, arrivee sur la **pastille 24** du connecteur. La mesure a confirme : le
+bitstream `trouve_audio` emettait 220 Hz sur P44, 440 sur P56, 880 sur P67, chacun
+son tour et les autres en haute impedance ; c'est **880 Hz** qui est apparu sur
+`R4` (avec son 3e harmonique a 2 640 Hz, lu 2 600).
+
+⚠️ **Ne jamais retraduire une broche Gosof par `CONNECTORS_MAP.md`.** Ce contrat
+fige les POSITIONS de connecteur, pas les fonctions, et il est ecrit pour une
+autre carte d'accueil.
+
+### Le montage : il n'y a rien a souder
+
+La carte Gosof porte deja toute la chaine — `R4 3,3K`, `C8 4,7nF` vers la masse,
+potentiometre `R5 20K`, `C7 100nF`, ampli `TDA7267`, haut-parleur. C'est exactement
+le filtre RC que `dac.vhd:9-16` reclame en commentaire. Le module MP3 (`Audio1`)
+injecte sa sortie sur le meme point par `R1`/`C3` : le melange son/parole se fait
+en analogique sur cette carte.
+
+### Un piege qui a coute un essai
+
+Le chargement precedent pilotait **quatre** broches avec le meme signal
+(P40/P43/P44/P45) et rien ne s'entendait. Sur une porteuse Gosof, trois de ces
+positions vont a des fonctions inconnues : une sortie de la carte qui se bat
+contre la notre suffit. Une seule broche pilotee, et le reste en haute impedance.
+
+---
+
 ## 2. Ce qui a tourné en simulation
 
 ### Le SC-01A, neuf captures (ghdl)
@@ -130,8 +178,9 @@ La branche de saturation reste non exercée.
 - ~~`gosof80` n'a jamais été placé-routé.~~ **Réglé** — voir la section 1 bis.
 - ~~Il n'existe aucun `.ucf` pour `gosof80`.~~ **Réglé** — `gosof_banc` réutilise
   `banc_sc01.ucf` (mêmes noms de nets), et le bitstream existe. **Reste à charger.**
-- **La parole n'a jamais été entendue**, ni en simulation du sommet ni sur la carte.
-  Le jeu strobe bien le SC-01A (7 phonèmes en 100 ms), mais personne n'a écouté.
+- **La PAROLE n'a toujours pas été entendue.** Les sons de jeu, oui — la parole du
+  SC-01A, non. Le jeu le strobe bien (7 phonèmes en 100 ms de simulation), mais
+  rien ne prouve encore que la voix sorte, ni qu'elle soit juste.
 - **La carte SD n'a jamais été lue.** Le chemin SPI, le format d'image et le
   secteur 660 n'ont jamais été exercés sur ce portage.
 - **52 des 64 phonèmes** n'ont jamais produit un échantillon.

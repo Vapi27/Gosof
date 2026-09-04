@@ -1,0 +1,53 @@
+#==============================================================================
+# gosof_banc.ucf — Gosof COMPLET sur module Smart FA, enfiche dans une porteuse
+#                  GOSOF 2.30 de bontango.
+#
+# DEUX BROCHES. Tout le reste est laisse a bitgen (UnusedPin:Pulldown).
+#
+# ⚠️ CE .UCF N'EST PAS INTERCHANGEABLE avec celui du banc SC-01A. Les positions de
+#    connecteur sont les memes, mais la CARTE D'ACCUEIL n'est pas la meme, donc
+#    les nets qu'elles portent sont differents. Le contrat CONNECTORS_MAP.md fige
+#    les POSITIONS, pas les fonctions.
+#
+# LA BROCHE AUDIO EST P67 = position P4.24. MESUREE, pas deduite.
+#
+# Deux methodes independantes concordent :
+#   - TRACAGE DU CUIVRE du PCB (GOSOF_2_30_PCB.PDF) : depuis la pastille gauche de
+#     R4, trois noeuds, un via, arrivee sur la pastille 24 du connecteur.
+#   - MESURE A L'ANALYSEUR sur R4 : le bitstream « trouve_audio » emettait 220 Hz
+#     sur P44, 440 Hz sur P56 et 880 Hz sur P67, chacun son tour. C'est 880 Hz qui
+#     est apparu (plus son 3e harmonique a 2640 Hz).
+#
+# ⚠️ TROIS AUTRES REPONSES ONT ETE FAUSSES avant celle-ci, et il faut savoir
+#    pourquoi pour ne pas les refaire :
+#      P56 -- par CONNECTORS_MAP.md:129 (PIN_31 -> P4.15). Cette table reproduit la
+#             devboard Cyclone 10 de bontango ; la porteuse Gosof 2.30 accueille un
+#             EP2C5T144C8, un Cyclone II. « PIN_31 » n'y designe pas la meme
+#             position. NE PAS retraduire par cette table pour une carte Gosof.
+#      P44 -- un essai a l'oreille, donne pour bon puis retire. Distinguer trois
+#             hauteurs dans un haut-parleur de flipper n'est pas une mesure.
+#      P4.3 -- deduit d'un battement a 1,5 Hz entendu. Un creneau plein rail a
+#             cette frequence traverse n'importe quel couplage parasite : ca
+#             prouvait qu'il existait UN chemin, pas que c'etait LE chemin audio.
+#
+# Dans le brochage GottFA80 la position P4.24 porte « CLK ». Le nom du contrat ne
+# dit rien de la carte d'accueil.
+#==============================================================================
+
+CONFIG VCCAUX = "3.3";
+NET "clk_50" TNM_NET = TNM_clk50;
+TIMESPEC TS_clk50 = PERIOD "TNM_clk50" 20 ns HIGH 50%;
+
+NET "clk_50" LOC = "P51" | IOSTANDARD = LVCMOS33;
+#   GottFA80_SLX9.ucf:169 — oscillateur Y2 du module, 50 MHz.
+
+NET "audio"  LOC = "P67" | IOSTANDARD = LVCMOS33 | DRIVE = 12 | SLEW = SLOW;
+#   GottFA80_SLX9.ucf:171 — position P4.24, IO_L2P_CMPCLK_2 (banque 2).
+#
+#   UNE SEULE BROCHE PILOTEE, a dessein. Le chargement precedent en pilotait
+#   QUATRE avec le meme signal (P40/P43/P44/P45) et rien ne s'est entendu. Sur une
+#   porteuse Gosof, trois de ces positions vont a des fonctions inconnues : une
+#   sortie de la carte SD ou du module MP3 qui se bat contre la notre suffit a
+#   tout gacher. Ici, plus rien d'autre n'est pilote.
+#   DRIVE 12 / SLEW SLOW repris de la seule mesure disponible sur une sortie
+#   audio de ce module : spartan6_nor/sys80_map.mrp:484.

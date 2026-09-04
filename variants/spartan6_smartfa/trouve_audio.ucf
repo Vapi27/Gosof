@@ -1,0 +1,34 @@
+#==============================================================================
+# trouve_audio.ucf — les trois broches candidates pour l'audio d'une porteuse
+#                    GOSOF 2.30, chacune son tour.
+#
+# TROIS SOURCES, TROIS REPONSES. Ce circuit ne tranche pas par raisonnement, il
+# demande a la carte :
+#   P44  position P4.6   « Sound »      indiquee par le proprietaire de la carte
+#   P56  position P4.15  « CS_SDcard »  via CONNECTORS_MAP.md:129 (PIN_31)
+#   P67  position P4.24  « CLK »        si la position 24 du PCB se lit en P4
+#
+# Le tracage du schema et celui du cuivre du PCB aboutissent tous deux a
+# « position 24 » ; la table du contrat place PIN_31 en « position 15 ». Deux
+# numerotations pour le meme connecteur physique, et rien pour departager.
+#
+# ⚠️ Les trois sont declarees en INOUT et pilotees UNE A LA FOIS, les autres en
+#    haute impedance. Deux de ces positions vont a des fonctions inconnues sur
+#    cette carte : si l'une est une sortie (lecteur SD, module MP3), la piloter
+#    serait un conflit. En 'Z' on n'impose rien.
+#
+# ⚠️ Baisser le potentiometre R5 avant de charger : un creneau plein rail traverse
+#    le filtre de la carte et attaque le TDA7267.
+#
+# ⚠️ COUPER LE 43 V pendant toute la configuration (HSWAPEN a la masse : toutes
+#    les broches montent au HAUT), et ne jamais alimenter l'USB et P6 ensemble.
+#==============================================================================
+
+CONFIG VCCAUX = "3.3";
+NET "clk_50" TNM_NET = TNM_clk50;
+TIMESPEC TS_clk50 = PERIOD "TNM_clk50" 20 ns HIGH 50%;
+
+NET "clk_50" LOC = "P51" | IOSTANDARD = LVCMOS33;   # oscillateur Y2 du module
+NET "cand_1" LOC = "P44" | IOSTANDARD = LVCMOS33 | DRIVE = 12 | SLEW = SLOW;   # P4.6  — 220 Hz, 1er
+NET "cand_2" LOC = "P56" | IOSTANDARD = LVCMOS33 | DRIVE = 12 | SLEW = SLOW;   # P4.15 — 440 Hz, 2e
+NET "cand_3" LOC = "P67" | IOSTANDARD = LVCMOS33 | DRIVE = 12 | SLEW = SLOW;   # P4.24 — 880 Hz, 3e

@@ -36,7 +36,7 @@ JEU=${2:-$R/rtl/spartan6/gosof_jeu_vide.vhd}
 COMPOSANT=xc6slx9-2-tqg144
 [ -f "$JEU" ] || { echo "paquet de jeu introuvable : $JEU"; exit 1; }
 rm -rf "$D"; mkdir -p "$D/xst/projnav.tmp"
-cp "$R/variants/spartan6_smartfa/banc_sc01.ucf" "$D/gosof_banc.ucf"
+cp "$R/variants/spartan6_smartfa/gosof_banc.ucf" "$D/"
 echo "   jeu : $(basename "$JEU")"
 
 # --- sources : gosof80 EN ENTIER, plus le sommet de banc ----------------------
