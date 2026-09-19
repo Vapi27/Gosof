@@ -173,3 +173,39 @@ NET "led_2"       LOC = "P27"  | IOSTANDARD = LVCMOS33;            # P3.22, D2
 # P1 entier (P74..P105) : 28/28 <nc> cote Gosof, aucune piste au PCB.
 # P4.19 / P4.20 (VCC1.2) : <nc> cote Gosof, et ce que le module en fait n'a pas
 #            ete lu. On n'y pose rien.
+
+# --- 🔒 RESERVE POUR LE COMPAGNON ESP32-S3 — NE PAS AFFECTER -----------------
+# Le module Smart FA SLX9 porte un ESP32-S3-WROOM-1 cable en dur a QUATRE broches
+# du FPGA. Elles sont INTERNES au module : elles ne sortent pas sur la porteuse,
+# donc rien ne signale qu'elles sont prises, et un futur portage pourrait les
+# affecter sans s'en apercevoir. Le design Gosof ne les utilise pas aujourd'hui ;
+# elles sont la place du lien ESP<->FPGA (voir le depot gosof-esp).
+#
+#   P143  <- ESP32_TX     = pad 24 du module ESP = IO47   (ESP -> FPGA)
+#   P142  -> ESP32_RX     = pad 11              = IO18   (FPGA -> ESP)
+#   P141  <- FA_CTRL_REQ  = pad 23              = IO21   (ESP -> FPGA)
+#   P35   <- NOR_CS       = pad 8               = IO15   (/CS de la NOR de config)
+#
+# Source, dans cet ordre et sans rien deduire : netlist IPC-356 du module
+# (gottfa-hw/module_slx9/production/netlist.ipc) pour pad ESP <-> broche FPGA,
+# puis le symbole ESP32-S3-WROOM-1 de ESP32.kicad_sch pour pad <-> GPIO.
+#
+# ⚠️ P35 porte le /CS de la NOR de configuration : l'affecter empecherait l'ESP de
+#    graver U5, c'est-a-dire de reparer la carte sans PC.
+
+# --- 🔴 P46 : LA CONSOLE SERIE DE L'ESP, A LAISSER TRANQUILLE ----------------
+# P46 = pad 36 du module ESP = RXD0 = IO44. Tout ce qu'on pose sur cette broche
+# arrive dans la console serie de l'ESP. Un niveau BAS permanent est un BREAK
+# permanent : la console meurt, et avec elle la gravure U5 par USB. Le RTL GottFA
+# y a laisse `lisy_active` (0 au repos) pendant des mois, puis un flux 441 kbaud
+# que personne n'ecoutait. Ici : rien. Si un jour on y pose une sonde, qu'elle
+# soit derriere un generique et au repos HAUT.
+
+# --- 🔴 ET CELLE QUI EST DEJA PRISE, MAIS PAS PAR NOUS ----------------------
+# `sd_cs` occupe P41. Sur le module, P41 est le net AUDIO_RX : pad 37 = TXD0 =
+# IO43 de l'ESP. Sur la porteuse GottFA80_PLuS c'est la ligne d'injection
+# ESP->FPGA. ICI C'EST LE CHIP SELECT DE LA CARTE SD, celle dont le 6502 lit sa
+# ROM : si le firmware ESP sort quoi que ce soit sur IO43, la ROM ne se charge
+# plus, et le symptome (« la carte ne parle plus ») n'accuse pas l'ESP.
+# Cote firmware, IO43 reste en entree haute impedance -- voir gosof-esp,
+# main/board_pins_gosof.h, PIEGE 1.
