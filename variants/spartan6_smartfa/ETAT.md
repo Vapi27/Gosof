@@ -71,6 +71,29 @@ Chaque commande doit etre essayee **seule, depuis un reset**.
 4. Le module MP3 (DFPlayer) n'est pas exploite : `DFP_Busy => '1'`, et
    `PAROLE_MP3_AUSSI => false` puisque le vrai SC-01A parle.
 
+## 4bis. Deux trous du dossier, trouves en corrigeant l'hybride (2026-09-19)
+
+Ce ne sont pas des defauts du RTL autonome -- il est propre sur ce point -- mais deux raisons
+pour lesquelles une faute de ce genre passerait inapercue ici.
+
+1. **Aucune simulation n'exerce une valeur `SB_Opt` non nominale.** `sim/tb_gosof80.vhd:74` et
+   `rtl/spartan6/gosof_banc.vhd:127` posent tous deux `SB_Opt => (others => '1')`. C'est le bon
+   repos, mais `options = "11"` desactive l'attract : une faute d'affectation des six bits est
+   donc **invisible par construction** dans tout ce qui existe aujourd'hui. Si l'on veut que ce
+   genre de faute ne repasse plus, c'est la qu'il faut ajouter quelque chose, pas dans le RTL.
+
+2. **Cinq des six affectations de broches de S1 n'ont jamais ete mesurees a l'ohmmetre.** Seule
+   `sb_opt<6>` = P127 a une source independante du schema (le journal de bontango, cite en tete
+   de `gosof_v230.ucf`). Les cinq autres reposent sur la seule regle de serigraphie. Ce n'est
+   pas une correction a faire : c'est une mesure a faire **avant** de s'appuyer dessus -- et
+   elle se recoupe avec le point 1 du paragraphe 4 (l'ordre physique des poles de S3).
+
+Pour memoire : l'hybride GottFA80_PLuS, lui, avait un vrai defaut a cet endroit -- six entrees
+pour quatre interrupteurs, comblees en dupliquant, ce qui forcait `SB1-1` (« USED IN SELF-TEST
+ONLY ») sur ON des qu'on choisissait l'attract a 10 s et rendait l'autotest de la carte son
+impossible. Corrige dans `Vapi27/GottFA80_PLuS` (`db4f2b5`). **Ici, `gosof_v230.vhd:205` cable
+`SB_Opt => sb_opt` droit : six bits, six broches distinctes, rien a reprendre.**
+
 ## 5. Les CINQ defauts de la base pristine, pour l'email a bontango
 
 1. **Le bus du SC-01 n'est pas inverse** : `cpu_data => cpu_dout(5 downto 0)`
