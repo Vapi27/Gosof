@@ -138,9 +138,13 @@ use ieee.numeric_std.all;
 entity tb_gosof80_sd is
 	generic (
 		BLOC     : string  := "/root/gosof-roms/bloc0.bin";
+		JEU_NUM  : natural := 0;        -- numero de jeu = emplacement sur la SD (0 = Mars, 36 = Alien Star)
+		FORCE0   : boolean := true;     -- S2 DIP4 sur ON : force l'emplacement 0
 		OCCUPE   : natural := 3;
 		SANS_SD  : boolean := false;    -- true : la reference, ROM du paquet gosof_jeu
 		TEST_MS  : integer := 120;      -- S4 enfonce a partir de cet instant
+		SON_MS   : integer := 0;        -- >0 : codes de son 1..SON_CODES a partir de cet instant
+		SON_CODES: natural := 3;
 		FIN_MS   : integer := 400
 	);
 end tb_gosof80_sd;
@@ -151,7 +155,10 @@ architecture essai of tb_gosof80_sd is
 	signal test_sw  : std_logic := '1';
 	signal audio_o, led0, led1, led2, dfp_tx : std_logic;
 	signal sd_cs, sd_mosi, sd_clk, sd_miso : std_logic;
+	signal son      : std_logic_vector(4 downto 0) := "00000";
+	signal opt      : std_logic_vector(3 downto 0);
 begin
+	opt <= "0111" when FORCE0 else "1111";           -- S2 : DIP1-3 OFF, DIP4 ON si FORCE0
 	clk <= not clk after 10 ns when not fini;
 
 	dut : entity work.gosof80
@@ -159,16 +166,16 @@ begin
 		             SD_DELAI => 50000)                    -- 1 ms au lieu de 500
 		port map (
 			clk_50 => clk, reset_sw => '1', test => test_sw,
-			Audio_O => audio_o, Sound => "00000",
+			Audio_O => audio_o, Sound => son,
 			SB_Opt => (others => '1'),                      -- S1 tout OFF
 			LED_0 => led0, LED_1 => led1, LED_2 => led2,
-			game_sel => "111111",                           -- S3 tout OFF : MA-216, bloc 0
-			option => "0111",                               -- S2 : DIP1-3 OFF, DIP4 ON
+			game_sel => std_logic_vector(to_unsigned(63 - JEU_NUM, 6)),   -- S3 = complement du numero
+			option => opt,
 			DFP_Busy => '1', DFP_tx => dfp_tx,
 			SD_CS => sd_cs, SD_MISO => sd_miso, SD_MOSI => sd_mosi, SD_CLK => sd_clk);
 
 	carte : entity work.sd_carte_bloc
-		generic map (BLOC => BLOC, OCCUPE => OCCUPE)
+		generic map (BLOC => BLOC, OCCUPE => OCCUPE, SECTEUR0 => 660 + 128 * JEU_NUM)
 		port map (cs_n => sd_cs, sclk => sd_clk, mosi => sd_mosi, miso => sd_miso);
 
 	-- LED_0 = SDcard_error (actif bas) : elle passe a '1' en all_done, quand le reset
@@ -178,6 +185,38 @@ begin
 		wait until led0 = '1';
 		report "SD : CHARGEMENT TERMINE, reset du 6502 relache a " & time'image(now);
 		wait;
+	end process;
+
+	-- Le MPU du flipper : un code sur les lignes de son, 20 ms, puis 10 ms de repos.
+	sons : process
+	begin
+		if SON_MS > 0 then
+			wait for SON_MS * 1 ms;
+			for c in 1 to SON_CODES loop
+				report "SON code " & integer'image(c) & " a " & time'image(now);
+				son <= std_logic_vector(to_unsigned(c, 5));
+				wait for 20 ms;
+				son <= "00000";
+				wait for 10 ms;
+			end loop;
+		end if;
+		wait;
+	end process;
+
+	-- La sortie audio moyennee sur 2 ms (0 .. 100000) : si le 6502 joue, elle BOUGE.
+	ecoute : process (clk)
+		variable n, s, prec : integer := 0;
+	begin
+		if rising_edge(clk) then
+			if audio_o = '1' then s := s + 1; end if;
+			n := n + 1;
+			if n = 100000 then
+				if s /= prec then
+					report "AUDIO t=" & integer'image(now / 1 ms) & "ms moyenne=" & integer'image(s);
+				end if;
+				prec := s; n := 0; s := 0;
+			end if;
+		end if;
 	end process;
 
 	scenario : process

@@ -145,7 +145,7 @@ entity tb_sd_card is
 		N_IDLE : natural := 3;
 		SOURD_MS : natural := 0;       -- (GHDL 1.0 ne sait pas surcharger un generique `time`)
 		TMAX_MS  : natural := 3000;
-		SEL    : natural := 5         -- numero de jeu : secteurs 660 + 8*SEL ..
+		SEL    : natural := 36        -- numero de jeu : secteurs 660 + 128*SEL .. (36 = Alien Star)
 	);
 end tb_sd_card;
 
@@ -173,6 +173,7 @@ begin
 	clk <= not clk after 10 ns when not fini;
 
 	dut : entity work.SD_Card
+		generic map (DELAI => 50000)       -- 1 ms au lieu de 500
 		port map (i_Clk => clk, i_Rst_L => '1',      -- comme sur la porteuse
 		          o_SPI_Clk => sclk, i_SPI_MISO => miso, o_SPI_MOSI => mosi, o_SPI_CS_n => cs_n,
 		          selection => std_logic_vector(to_unsigned(SEL, 8)),
@@ -191,7 +192,7 @@ begin
 	begin
 		if rising_edge(clk) and wr = '1' then
 			a   := to_integer(unsigned(adr));
-			att := octet(660 + 8 * SEL + a / 512, a mod 512);
+			att := octet(660 + 128 * SEL + a / 512, a mod 512);   -- 64 Ko par jeu (image v4.00)
 			somme_att <= somme_att + unsigned(att);
 			n := n + 1;
 			if donnee /= att then

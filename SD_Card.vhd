@@ -281,7 +281,14 @@ SD_CARD_READ: entity work.SPI_Master --read i byte by byte (slooow)
 									 -- which is 8 sectors 512Byte each									 
 									 -- l'argument de CMD18 occupe maintenant les bits 39..8 ; le secteur va
 									 -- dans ses 16 bits bas.
-									 TX_Data_A(23 downto 8)  <= std_logic_vector (unsigned(selection) *8 + 660);									 
+									 -- !! 128 SECTEURS PAR JEU, PAS 8. L'image SD Gosof v4.00 (fichier GOSOF400.TXT :
+									 --    "GOSOF SD image v4.00 with CRC check") range UN FICHIER DE 64 KO PAR JEU,
+									 --    le premier au secteur 660 : jeu n au secteur 660 + 128 n (verifie sur les
+									 --    55 fichiers). Seuls les 4 premiers Ko sont la ROM ; le fichier finit par un
+									 --    controle de 2 octets. L'amont (v04, "*8") lisait le format d'image
+									 --    precedent, 4 Ko par jeu : avec l'image v4.00, seul le jeu 0 (Mars) tombait
+									 --    juste -- Alien Star (jeu 36) lisait des zeros au milieu de Black Hole.
+									 TX_Data_A(23 downto 8)  <= std_logic_vector (unsigned(selection) *128 + 660);									 
 						when 7 => TX_Data_A <= x"FF" & CMD12 & x"FFFFFFFFFFFFFF";	
 									 do_not_disable_SS <= '0';	
 						when others => TX_Data_A <= x"FF" & x"FFFFFFFFFFFF" & x"FFFFFFFFFFFFFF"; -- init and read
