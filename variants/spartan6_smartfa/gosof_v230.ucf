@@ -164,6 +164,12 @@ NET "led_2"       LOC = "P27"  | IOSTANDARD = LVCMOS33;            # P3.22, D2
 #      ne porte aucune legende de fonction. Sans risque electrique. Se tranche en
 #      allumant P26 seule puis P27 seule.
 
+# --- TRACE du lecteur SD vers l'ESP ----------------------------------------
+# P142 -> ESP32_RX = IO18 : l'entree de l'UART1 de l'ESP, 115200 8N1, lue par
+# PSTORE RXDUMP. Une trame de 21 octets toutes les 100 ms, en DIAG seulement ;
+# hors DIAG la broche est tenue HAUT (repos UART). Cote ESP c'est une ENTREE :
+# aucun conflit possible. Voir SD_Card.vhd, processus Trace.
+NET "dbg_tx"      LOC = "P142" | IOSTANDARD = LVCMOS33;            # -> ESP IO18
 # --- CE QUI N'EST VOLONTAIREMENT PAS CONTRAINT ------------------------------
 # reset_sw : AUCUNE source sur cette porteuse (112 broches verifiees). Retire du
 #            sommet et cable a '1' -- pas laisse sans LOC, ce qui le ferait
@@ -182,7 +188,7 @@ NET "led_2"       LOC = "P27"  | IOSTANDARD = LVCMOS33;            # P3.22, D2
 # elles sont la place du lien ESP<->FPGA (voir le depot gosof-esp).
 #
 #   P143  <- ESP32_TX     = pad 24 du module ESP = IO47   (ESP -> FPGA)
-#   P142  -> ESP32_RX     = pad 11              = IO18   (FPGA -> ESP)
+#   P142  -> ESP32_RX     = pad 11              = IO18   (FPGA -> ESP)  PRISE : trace SD
 #   P141  <- FA_CTRL_REQ  = pad 23              = IO21   (ESP -> FPGA)
 #   P35   <- NOR_CS       = pad 8               = IO15   (/CS de la NOR de config)
 #

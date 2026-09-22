@@ -89,7 +89,10 @@ entity gosof80 is
 		SD_CS : out    	std_logic;		
 		SD_MISO : in 	std_logic;		
 		SD_MOSI : out    	std_logic;		
-		SD_CLK : out    	std_logic		
+		SD_CLK : out    	std_logic;
+		-- TRACE du lecteur SD (instrument de mesure) : UART 115200 8N1, voir
+		-- SD_Card.vhd, processus Trace. Au repos HAUT.
+		DBG_TX : out    	std_logic
 		
 		);
 end gosof80;
@@ -763,7 +766,8 @@ port map(
 	-- control CPU
 	cpu_reset_l => reset_sd,
 	-- feedback
-	SDcard_error => LED_0
+	SDcard_error => LED_0,
+	dbg_tx => DBG_TX
 	);	
 	
 -- soundrom1 for MA219/MA309

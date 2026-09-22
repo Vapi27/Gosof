@@ -133,7 +133,11 @@ entity gosof_v230 is
 		--    schema ne donne aucune legende de fonction. Sans risque electrique.
 		led_0    : out std_logic;
 		led_1    : out std_logic;
-		led_2    : out std_logic
+		led_2    : out std_logic;
+		-- TRACE du lecteur SD vers l'ESP : P142 -> IO18 = RX de l'UART1, que
+		-- FA_Control ecoute deja a 115200 (PSTORE RXDUMP). Emet seulement en
+		-- DIAG ; sinon tenue HAUT, le repos d'une UART.
+		dbg_tx   : out std_logic
 	);
 end gosof_v230;
 
@@ -148,6 +152,7 @@ architecture rtl of gosof_v230 is
 	signal son_cpt        : unsigned(27 downto 0) := (others => '0');
 	signal code           : integer range 0 to 31 := 1;
 	signal son_eff        : std_logic_vector(4 downto 0);
+	signal dbg_int        : std_logic;
 begin
 
 	-- ------------------------------------------------------------------
@@ -213,11 +218,13 @@ begin
 			SD_CS    => sd_cs,
 			SD_MISO  => sd_miso,
 			SD_MOSI  => sd_mosi,
-			SD_CLK   => sd_clk_i);
+			SD_CLK   => sd_clk_i,
+			DBG_TX   => dbg_int);
 
 	audio  <= flux;
 	sd_clk <= sd_clk_i;
 	led_1  <= a_change when DIAG else l1_int;
 	led_2  <= sd_vu    when DIAG else l2_int;
+	dbg_tx <= dbg_int  when DIAG else '1';
 
 end rtl;
