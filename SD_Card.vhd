@@ -73,10 +73,13 @@ use IEEE.numeric_std.all;
 		signal do_not_disable_SS : std_LOGIC;		
 		signal sector : unsigned (15 downto 0);	
 		
-		signal byte_count : integer range 0 to 520; 		
+		signal byte_count : integer range 0 to 520; 
+		-- octets lus sans trouver de jeton 0xFE ; au-dela de 10 000 (~200 ms a
+		-- 403 kHz, deux fois le delai maximal de la norme) on part en `error`.
+		signal fe_attente : integer range 0 to 10000 := 0;		
 		
 		signal attempts : integer range 0 to 5000; 
-		signal counter  : integer range 0 to 5000000;   -- delay, for 10ms use 500.000
+		signal counter  : integer range 0 to 25000000;   -- delay, for 10ms use 500.000
 	begin		
 		
 		-- signals for the two SPI Master
@@ -179,7 +182,11 @@ SD_CARD_READ: entity work.SPI_Master --read i byte by byte (slooow)
 					-- La correction est NEUTRE : l'etat change toujours quand le compteur
 					-- atteint 5000000, au meme cycle qu'avant. Defaut PRISTINE, identique
 					-- dans origin/main:SD_Card.vhd. A signaler a bontango.
-					if ( counter = 5000000 ) then --100ms 
+					-- 500 ms et non plus 100 : valeur de la revision amont de 06.2025
+					-- (hyb_ay/lib_common/SD_Card.vhd). Laisse aussi passer les messages
+					-- du chargeur ROM de l'ESP, emis au demarrage sur P41 -- la broche de
+					-- sd_cs sur cette porteuse.
+					if ( counter = 25000000 ) then --500ms 
 						state_A <= send_read_request;
 						counter <= 0;						
 					else
@@ -192,14 +199,27 @@ SD_CARD_READ: entity work.SPI_Master --read i byte by byte (slooow)
 						when 3 => TX_Data_A <= x"FF" & CMD55 & x"FFFFFFFFFFFFFF";						
 						when 4 => TX_Data_A <= x"FF" & ACMD41 & x"FFFFFFFFFFFFFF";		
 						when 5 => TX_Data_A <= x"FF" & CMD58 & x"FFFFFFFFFFFFFF";		
-						when 6 => TX_Data_A <= x"FF" & CMD18 & x"FFFFFFFFFFFFFF";	
+						-- !! LA COMMANDE EN FIN DE TRAME. La trame fait 112 bits, taillee pour la
+						--    reponse R7 de CMD8 : avec la commande au debut, CINQ octets etaient
+						--    cadences APRES le R1 et jetes sans etre regardes. Une carte rapide y
+						--    envoie deja le jeton 0xFE du premier bloc : il etait perdu, et la
+						--    chasse au jeton se raccrochait au premier 0xFE trouve DANS les donnees.
+						--    Les 4096 octets etaient ecrits quand meme, decales, et le reset
+						--    relache sur une ROM fausse : carte muette, aucune erreur. Ici plus
+						--    rien n'est cadence apres la commande : R1, remplissage et jeton sont
+						--    lus un par un par le maitre R, qui ne prend que le 0xFE (R1 a son bit
+						--    7 a 0, il ne peut pas l'etre). Defaut PRISTINE, present aussi dans le
+						--    SD_Card.vhd de WillFA7.
+						when 6 => TX_Data_A <= x"FFFFFFFFFFFFFFFF" & CMD18;	
 									 do_not_disable_SS <= '1';
 									 -- special: calculate sector on GoSOF SD
 									 -- where to read rom dependign on dip switch
 									 -- first rom starts at sector 660
 									 -- we have 4 KByte of data
 									 -- which is 8 sectors 512Byte each									 
-									 TX_Data_A(79 downto 64)  <= std_logic_vector (unsigned(selection) *8 + 660);									 
+									 -- l'argument de CMD18 occupe maintenant les bits 39..8 ; le secteur va
+									 -- dans ses 16 bits bas.
+									 TX_Data_A(23 downto 8)  <= std_logic_vector (unsigned(selection) *8 + 660);									 
 						when 7 => TX_Data_A <= x"FF" & CMD12 & x"FFFFFFFFFFFFFF";	
 									 do_not_disable_SS <= '0';	
 						when others => TX_Data_A <= x"FF" & x"FFFFFFFFFFFF" & x"FFFFFFFFFFFFFF"; -- init and read
@@ -261,6 +281,7 @@ SD_CARD_READ: entity work.SPI_Master --read i byte by byte (slooow)
 										active_master <= "10";		
 										address_sd_card <= (others => '0');			
 										byte_count <= 0;							
+										fe_attente <= 0;
 										state_A <= initiate_read_sector;
 									when 7 => -- we send CMD12 to stop read sector, all done
 										wr_rom <= '0';		
@@ -299,7 +320,13 @@ SD_CARD_READ: entity work.SPI_Master --read i byte by byte (slooow)
 						data_sd_card <= RX_Data_R;
 						   if RX_Data_R = x"FE" then							
 								state_A <= sector_read; --flag found, next byte is data
+							elsif fe_attente = 10000 then
+								-- Le jeton n'arrive jamais : ERREUR VISIBLE (D5) plutot que de
+								-- chercher pour l'eternite -- ou, pire, de se raccrocher a un
+								-- 0xFE fortuit et de relacher le reset sur une ROM fausse.
+								state_A <= error;
 							else
+								fe_attente <= fe_attente + 1;
 								state_A <= initiate_read_sector; --next byte to read and check
 							end if;							
 						end if;
@@ -325,12 +352,17 @@ SD_CARD_READ: entity work.SPI_Master --read i byte by byte (slooow)
 							if byte_count <= 512 then	-- in sector read
 								wr_rom <= '1';	-- write to ram/rom with current data & address
 								state_A <= inc_addr_and_unset_wr;		-- write to ram/rom
-							elsif byte_count <= 514 then -- in crc read
-								-- no write for crc
-								state_A <= sector_read;		-- next byte						
-							else -- sector read finished
+							elsif byte_count = 513 then -- premier octet de CRC : lire le second
+								state_A <= sector_read;
+							else -- 514 : second octet de CRC lu, le secteur est FINI
+								-- !! On ne lit plus de 515e octet. L'ancien code en lisait un de
+								--    plus et le jetait : si la carte enchaine le bloc suivant sans
+								--    octet de remplissage, c'etait le JETON 0xFE qui partait a la
+								--    poubelle -- meme effet que la trame CMD18. La chasse au jeton
+								--    qui suit accepte zero, un ou plusieurs octets de remplissage.
 								byte_count <= 0;
-								state_A <= initiate_read_sector;		-- next sector					
+								fe_attente <= 0;
+								state_A <= initiate_read_sector;		-- next sector
 							end if;																											
 						end if;
 						
