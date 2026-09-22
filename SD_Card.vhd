@@ -17,6 +17,9 @@ use IEEE.std_logic_1164.all;
 use IEEE.numeric_std.all;
 
 	entity SD_Card is
+		-- DELAI : cycles de 50 MHz avant le premier essai, et entre deux relances.
+		-- 25 000 000 = 500 ms sur la carte ; un banc de simulation le raccourcit.
+		generic ( DELAI : integer range 1 to 25000000 := 25000000 );
 		port(
 		i_Clk		: IN STD_LOGIC  := '1';
 		-- Control/Data Signals,
@@ -37,7 +40,9 @@ use IEEE.numeric_std.all;
 		-- feedback
 		SDcard_error : out STD_LOGIC;
 		-- INSTRUMENT DE MESURE : trame d'etat en UART 115200 8N1, voir le processus Trace.
-		dbg_tx : out std_logic
+		dbg_tx : out std_logic;
+		-- TEMOINS DU 6502 fournis par GOSOF80 : 19 octets, emis dans la trame B.
+		trace_cpu : in std_logic_vector(151 downto 0) := (others => '0')
 		);
     end SD_Card;
 	 
@@ -93,6 +98,7 @@ use IEEE.numeric_std.all;
 		signal tr_bit    : integer range 0 to 9 := 0;
 		signal tr_octet  : integer range 0 to 22 := 22;                     -- 22 = au repos
 		signal tr_seq    : unsigned(7 downto 0) := (others => '0');
+		signal tr_b      : std_logic := '0';                                -- '1' : la prochaine trame est B
 		signal tr_tx     : std_logic := '1';
 		function code_etat(s : STATE_T) return integer is
 		begin
@@ -109,8 +115,30 @@ use IEEE.numeric_std.all;
 		end function;
 		
 		signal attempts : integer range 0 to 5000; 
+		-- !! LE RESET DU 6502 N'EXISTAIT PAS SUR CETTE PORTEUSE, ET C'EST LA PANNE DU MODE SD.
+		--    Les trois sorties ci-dessous n'etaient remises a zero QUE par la branche de
+		--    reset (i_Rst_L = '0'). Sur la carte Cyclone d'origine, i_Rst_L est un bouton :
+		--    la branche vit, et de toute facon un registre Altera demarre a 0. Ici reset_sw
+		--    est cable a '1' (aucune source sur la porteuse) : la branche est MORTE, et
+		--    cpu_reset_l n'etait plus affecte qu'a '1'. XST a donc le droit d'en faire la
+		--    constante '1' -- et il l'a fait : son rapport liste un registre pour
+		--    SDcard_error et pour wr_rom, AUCUN pour cpu_reset_l. Le 6502 tournait donc des
+		--    la configuration, sur une ROM vide, et le chargement SD -- parfait, mesure par
+		--    la trace -- ecrivait la ROM sous ses pieds sans qu'il redemarre jamais dessus.
+		--    Silence. En SANS_SD le reset vient d'un compteur a valeur initiale explicite :
+		--    d'ou "la ROM dans le bitstream parle, la meme ROM lue sur la SD non".
+		--    La valeur initiale EXPLICITE ci-dessous oblige le registre a exister et a
+		--    demarrer a la bonne valeur, avec ou sans branche de reset vivante.
+		--    Reproduit en simulation (tb_gosof80_sd.vhd) : sans elle, cpu_reset_l vaut 'U',
+		--    le T65 n'est jamais en reset et n'ecrit jamais $3000.
+		signal cpu_reset_i : std_logic := '0';   -- 6502 tenu jusqu'a all_done
+		signal sd_erreur_i : std_logic := '1';   -- D5 eteinte (actif bas) jusqu'a une erreur
+		signal wr_rom_i    : std_logic := '0';
 		signal counter  : integer range 0 to 25000000;   -- delay, for 10ms use 500.000
 	begin		
+	cpu_reset_l  <= cpu_reset_i;
+	SDcard_error <= sd_erreur_i;
+	wr_rom       <= wr_rom_i;
 		
 		-- signals for the two SPI Master
 	o_SPI_MOSI <=	
@@ -184,17 +212,17 @@ SD_CARD_READ: entity work.SPI_Master --read i byte by byte (slooow)
 		begin
 		if rising_edge(i_Clk) then
 			if i_Rst_L = '0' then --Reset condidition (reset_l)    
-				cpu_reset_l <= '0';
+				cpu_reset_i <= '0';
 				TX_Start_A <= '0';		
 				TX_Start_R <= '0';		
 				TX_Data_R <= x"FF";				
 				cmd_count <= 0;
 				active_master <= "00";
 				do_not_disable_SS <= '0'; --default
-				wr_rom <= '0';
+				wr_rom_i <= '0';
 				address_sd_card <= (others => '0');
 				byte_count <= 0;
-				SDcard_error <= '1'; -- active low
+				sd_erreur_i <= '1'; -- active low
 				counter <= 0;
 				attempts <= 0;
 				state_A <= Startdelay;    
@@ -220,7 +248,7 @@ SD_CARD_READ: entity work.SPI_Master --read i byte by byte (slooow)
 					-- (hyb_ay/lib_common/SD_Card.vhd). Laisse aussi passer les messages
 					-- du chargeur ROM de l'ESP, emis au demarrage sur P41 -- la broche de
 					-- sd_cs sur cette porteuse.
-					if ( counter = 25000000 ) then --500ms 
+					if ( counter = DELAI ) then --500ms 
 						state_A <= send_read_request;
 						counter <= 0;						
 					else
@@ -332,9 +360,9 @@ SD_CARD_READ: entity work.SPI_Master --read i byte by byte (slooow)
 										nb_jetons <= (others => '0'); somme <= (others => '0');   -- TRACE
 										state_A <= initiate_read_sector;
 									when 7 => -- we send CMD12 to stop read sector, all done
-										wr_rom <= '0';		
+										wr_rom_i <= '0';		
 										-- start cpu
-										cpu_reset_l <= '1';						
+										cpu_reset_i <= '1';						
 										state_A <= all_done;																
 										
 									when others =>
@@ -382,7 +410,7 @@ SD_CARD_READ: entity work.SPI_Master --read i byte by byte (slooow)
 	
 				when sector_read =>
 							TX_Start_R <= '1'; -- set flag for sending byte		
-							wr_rom <= '0'; --stop writing to ram/rom
+							wr_rom_i <= '0'; --stop writing to ram/rom
 							state_A <= wait_for_byte_read;					
 							
 				when wait_for_byte_read =>
@@ -399,7 +427,7 @@ SD_CARD_READ: entity work.SPI_Master --read i byte by byte (slooow)
 						if (TX_Done_R = '0') then -- Master sets back TX_Done when ready again
 							-- where are we in sector read?
 							if byte_count <= 512 then	-- in sector read
-								wr_rom <= '1';	-- write to ram/rom with current data & address
+								wr_rom_i <= '1';	-- write to ram/rom with current data & address
 								somme <= somme + unsigned(RX_Data_R);   -- TRACE : l'octet que wr_rom ecrit
 								state_A <= inc_addr_and_unset_wr;		-- write to ram/rom
 							elsif byte_count = 513 then -- premier octet de CRC : lire le second
@@ -417,7 +445,7 @@ SD_CARD_READ: entity work.SPI_Master --read i byte by byte (slooow)
 						end if;
 						
 				when inc_addr_and_unset_wr =>		
-								wr_rom <= '0';	
+								wr_rom_i <= '0';	
 								-- prepare address for next
 								address_sd_card <= std_LOGIC_VECTOR(unsigned(address_sd_card) +1);
 								-- finished?								
@@ -433,9 +461,9 @@ SD_CARD_READ: entity work.SPI_Master --read i byte by byte (slooow)
 								state_A <= send_read_request; 
 								
 				when all_done =>		
-					SDcard_error <= '1'; --active low
+					sd_erreur_i <= '1'; --active low
 				when error =>		
-					SDcard_error <= '0'; --active low
+					sd_erreur_i <= '0'; --active low
 					-- NOUVEL ESSAI toutes les 500 ms, depuis les horloges de reveil. L'amont
 					-- restait ici pour toujours : une carte SD inaccessible au premier essai
 					-- (inseree en retard, ligne encore tenue par l'ESP qui demarre) rendait
@@ -443,8 +471,8 @@ SD_CARD_READ: entity work.SPI_Master --read i byte by byte (slooow)
 					-- pendant l'attente : une erreur survenue en lecture le laissait BAS.
 					active_master <= "01";
 					do_not_disable_SS <= '0';
-					wr_rom <= '0';
-					if ( counter = 25000000 ) then
+					wr_rom_i <= '0';
+					if ( counter = DELAI ) then
 						counter <= 0;
 						cmd_count <= 0;
 						attempts <= 0;
@@ -476,6 +504,8 @@ SD_CARD_READ: entity work.SPI_Master --read i byte by byte (slooow)
 	--   19    fe_attente (poids faible)
 	--   20    relances   redemarrages depuis CMD0 apres une erreur
 	--   21    seq        compteur de trames
+	-- Une trame sur deux est la TRAME B (A5 5B) : les temoins du 6502, voir
+	-- Temoins_CPU dans GOSOF80.vhd pour l'ordre des 19 octets.
 	-- ------------------------------------------------------------------------
 	Trace : process (i_Clk)
 		variable att : unsigned(15 downto 0);
@@ -486,7 +516,19 @@ SD_CARD_READ: entity work.SPI_Master --read i byte by byte (slooow)
 			if tr_tick = 4999999 then tr_tick <= 0; else tr_tick <= tr_tick + 1; end if;
 			if tr_octet = 22 then
 				tr_tx <= '1';
-				if tr_tick = 0 then
+				if tr_tick = 0 and tr_b = '1' then
+					-- TRAME B : A5 5B, les 19 octets de temoins du 6502, seq.
+					trame(0) <= x"A5";
+					trame(1) <= x"5B";
+					for k in 0 to 18 loop
+						trame(k + 2) <= trace_cpu(8*k + 7 downto 8*k);
+					end loop;
+					trame(21) <= std_logic_vector(tr_seq);
+					tr_seq   <= tr_seq + 1;
+					tr_b     <= '0';
+					tr_octet <= 0; tr_bit <= 0; tr_baud <= 0;
+				elsif tr_tick = 0 then
+					tr_b <= '1';
 					att := to_unsigned(attempts, 16);
 					adr := resize(unsigned(address_sd_card), 16);
 					trame(0)  <= x"A5";

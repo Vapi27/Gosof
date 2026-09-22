@@ -59,7 +59,9 @@ entity gosof80 is
 		-- les ecritures de la page $3xxx (l'horloge du SC-01, que le jeu pilote),
 		-- les strobes de phoneme, et les cycles ou le melangeur ECRETE. La
 		-- synthese ignore report ; a false le processus ne fait rien du tout.
-		TRACE   : boolean := false
+		TRACE   : boolean := false;
+		-- SD_DELAI : voir SD_Card.DELAI. Seul un banc de simulation le change.
+		SD_DELAI : integer := 25000000
 	);
 	port(
 		clk_50	: in std_logic;
@@ -98,6 +100,21 @@ entity gosof80 is
 end gosof80;
 
 architecture rtl of gosof80 is 
+	function if_op(s : std_logic) return string is
+	begin
+		if s = '1' then return " OP "; else return "    "; end if;
+	end function;
+	-- hexadecimal pour les rapports de simulation. PAS to_hstring : c'est du VHDL-2008,
+	-- que XST (VHDL-93) refuse -- la synthese echouait a la lecture du fichier.
+	function hx2(v : std_logic_vector(7 downto 0)) return string is
+		constant h : string(1 to 16) := "0123456789ABCDEF";
+	begin
+		return h(to_integer(unsigned(v(7 downto 4))) + 1) & h(to_integer(unsigned(v(3 downto 0))) + 1);
+	end function;
+	function hx4(v : std_logic_vector(15 downto 0)) return string is
+	begin
+		return hx2(v(15 downto 8)) & hx2(v(7 downto 0));
+	end function;
 
 	-- multi SD, type according to game select
 	constant is_MA216 : std_logic_vector(2 downto 0):="000";
@@ -141,6 +158,15 @@ architecture rtl of gosof80 is
 	signal n_cpu_nmi	: 	std_logic;
 	signal n_cpu_irq	:  std_logic;
 	signal cpu_wr_n	:  std_logic;
+	-- TEMOINS DU 6502 : instrument lu par la trace de SD_Card (DIAG). Voir Temoins_CPU.
+	signal cpu_sync   : std_logic;
+	signal t_vec      : std_logic_vector(15 downto 0) := (others => '0');
+	signal t_pc       : std_logic_vector(15 downto 0) := (others => '0');
+	signal t_op1, t_pb, t_phon : std_logic_vector(7 downto 0) := (others => '0');
+	signal t_n_pb, t_n_phon, t_n_dac, t_n_3000 : unsigned(15 downto 0) := (others => '0');
+	signal t_n_irq    : unsigned(7 downto 0) := (others => '0');
+	signal t_vec_vu, t_op_vu, t_irq_prec : std_logic := '0';
+	signal trace_cpu  : std_logic_vector(151 downto 0);
 	
 	signal riot_dout	:  std_logic_vector(7 downto 0);
 	signal riot_pa_i	:  std_logic_vector(7 downto 0);
@@ -544,7 +570,8 @@ port map(
 	R_W_n => cpu_wr_n,
 	A => cpu_addr_24,
 	DI => cpu_din,
-	DO => cpu_dout
+	DO => cpu_dout,
+	Sync => cpu_sync
 );	
 
 cpu_addr <= cpu_addr_24(15 downto 0);
@@ -746,7 +773,76 @@ begin
 	end if;
 end process;
 
+-- ------------------------------------------------------------------------
+-- TEMOINS DU 6502. La trace SD prouve que la ROM arrive intacte et que le reset
+-- est relache ; elle ne dit pas ce que le processeur FAIT ensuite. Ici on le lit
+-- au front de cpu_clk ou le T65 echantillonne son bus : on voit EXACTEMENT ce
+-- qu'il voit. Ecriture seule dans des registres a part : rien n'influence le 6502.
+-- Sur une MA-216 saine : vecteur $F010, premier opcode $D8 (CLD), puis la boucle
+-- d'attente $F068-$F083 qui lit PB ($0202) sans arret, bit 6 = poussoir Test.
+-- ------------------------------------------------------------------------
+Temoins_CPU : process (cpu_clk)
+begin
+	if rising_edge(cpu_clk) then
+		if reset_l = '1' then
+			if cpu_wr_n = '1' then
+				if cpu_addr = x"FFFC" then t_vec(7 downto 0) <= cpu_din; end if;
+				if cpu_addr = x"FFFD" then t_vec(15 downto 8) <= cpu_din; t_vec_vu <= '1'; end if;
+				if cpu_sync = '1' then
+					t_pc <= cpu_addr;
+					if t_vec_vu = '1' and t_op_vu = '0' then t_op1 <= cpu_din; t_op_vu <= '1'; end if;
+				end if;
+				if cpu_addr(14 downto 0) = "000001000000010" then   -- $0202, PB du RIOT
+					t_pb <= cpu_din;
+					if t_n_pb /= x"FFFF" then t_n_pb <= t_n_pb + 1; end if;
+				end if;
+			else
+				case cpu_addr(14 downto 12) is
+					when "001" => if t_n_dac  /= x"FFFF" then t_n_dac  <= t_n_dac  + 1; end if;
+					when "010" => if t_n_phon /= x"FFFF" then t_n_phon <= t_n_phon + 1; end if;
+					              t_phon <= cpu_dout;
+					when "011" => if t_n_3000 /= x"FFFF" then t_n_3000 <= t_n_3000 + 1; end if;
+					when others => null;
+				end case;
+			end if;
+			if n_cpu_irq = '0' and t_irq_prec = '1' and t_n_irq /= x"FF" then t_n_irq <= t_n_irq + 1; end if;
+			t_irq_prec <= n_cpu_irq;
+		end if;
+	end if;
+end process;
+-- SIMULATION SEULEMENT (TRACE) : les 60 premiers cycles de bus apres le reset,
+-- tels que le T65 les voit a son front. « OP » marque une lecture d'instruction.
+Trace_Bus_Sim : process (cpu_clk)
+	variable n : integer := 0;
+begin
+	if TRACE and rising_edge(cpu_clk) then
+		if reset_l = '1' and n < 60 then
+			n := n + 1;
+			if cpu_wr_n = '1' then
+				report "BUS " & integer'image(n) & (if_op(cpu_sync)) & hx4(cpu_addr) & " lit    " & hx2(cpu_din);
+			else
+				report "BUS " & integer'image(n) & (if_op(cpu_sync)) & hx4(cpu_addr) & " ECRIT  " & hx2(cpu_dout);
+			end if;
+		end if;
+	end if;
+end process;
+-- octet k = trace_cpu(8k+7 downto 8k), dans l'ordre de la trame B (voir SD_Card).
+trace_cpu <= SB_Opt(1) & SB_Opt(2) & SB_Opt(3) & SB_Opt(4) & SB_Opt(5) & SB_Opt(6) & "00"  -- 18
+           & "00" & game_sel                                                                -- 17
+           & std_logic_vector(t_n_irq)                                                      -- 16
+           & std_logic_vector(t_n_3000(15 downto 8)) & std_logic_vector(t_n_3000(7 downto 0)) -- 15 14
+           & std_logic_vector(t_n_dac(15 downto 8))  & std_logic_vector(t_n_dac(7 downto 0))  -- 13 12
+           & t_phon                                                                         -- 11
+           & std_logic_vector(t_n_phon(15 downto 8)) & std_logic_vector(t_n_phon(7 downto 0)) -- 10 9
+           & t_pb                                                                           -- 8
+           & std_logic_vector(t_n_pb(15 downto 8))   & std_logic_vector(t_n_pb(7 downto 0))   -- 7 6
+           & t_pc(15 downto 8) & t_pc(7 downto 0)                                           -- 5 4
+           & t_op1                                                                          -- 3
+           & t_vec(15 downto 8) & t_vec(7 downto 0)                                         -- 2 1
+           & option(3) & option(2) & option(1) & option(0) & t_op_vu & t_vec_vu & test & reset_l; -- 0
+
 SD_CARD: entity work.SD_Card
+generic map( DELAI => SD_DELAI )
 port map(	
 	--
 	i_clk		=> clk_50,	
@@ -767,7 +863,8 @@ port map(
 	cpu_reset_l => reset_sd,
 	-- feedback
 	SDcard_error => LED_0,
-	dbg_tx => DBG_TX
+	dbg_tx => DBG_TX,
+	trace_cpu => trace_cpu
 	);	
 	
 -- soundrom1 for MA219/MA309
